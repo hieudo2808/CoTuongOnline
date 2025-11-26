@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cờ Tướng Online</title>
+    <link rel="stylesheet" href="public/css/board.css">
+    <link rel="stylesheet" href="public/css/app.css">
+</head>
+
+<body>
+    <!-- App Container -->
+    <div id="app">
+        <!-- Header -->
+        <header id="app-header">
+            <div class="header-left">
+                <h1>🎮 Cờ Tướng Online</h1>
+            </div>
+            <div class="header-center" id="user-info" style="display: none;">
+                <span id="username-display"></span>
+                <span id="rating-display"></span>
+            </div>
+            <div class="header-right">
+                <button id="btn-settings" class="icon-btn" title="Settings">⚙️</button>
+                <button id="btn-logout" class="icon-btn" style="display: none;" title="Logout">🚪</button>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main id="app-main">
+            <!-- Screen: Login/Register -->
+            <div id="screen-auth" class="screen active">
+                <div class="auth-container">
+                    <div class="auth-box">
+                        <h2>Đăng Nhập / Đăng Ký</h2>
+
+                        <div class="connection-section">
+                            <h3>Kết Nối Server</h3>
+                            <div class="input-group">
+                                <label>Server:</label>
+                                <input type="text" id="server-host" value="127.0.0.1" placeholder="127.0.0.1">
+                            </div>
+                            <div class="input-group">
+                                <label>Port:</label>
+                                <input type="number" id="server-port" value="9000" placeholder="9000">
+                            </div>
+                            <button id="btn-connect" class="btn-primary">Kết Nối</button>
+                            <div id="connection-status" class="status-message"></div>
+                        </div>
+
+                        <div id="auth-forms" style="display: none;">
+                            <div class="tabs">
+                                <button class="tab-btn active" data-tab="login">Đăng Nhập</button>
+                                <button class="tab-btn" data-tab="register">Đăng Ký</button>
+                            </div>
+
+                            <!-- Login Form -->
+                            <div id="tab-login" class="tab-content active">
+                                <div class="input-group">
+                                    <label>Tên đăng nhập:</label>
+                                    <input type="text" id="login-username" placeholder="Nhập username">
+                                </div>
+                                <div class="input-group">
+                                    <label>Mật khẩu:</label>
+                                    <input type="password" id="login-password" placeholder="Nhập password">
+                                </div>
+                                <button id="btn-login" class="btn-primary">Đăng Nhập</button>
+                            </div>
+
+                            <!-- Register Form -->
+                            <div id="tab-register" class="tab-content">
+                                <div class="input-group">
+                                    <label>Tên đăng nhập:</label>
+                                    <input type="text" id="register-username" placeholder="Nhập username">
+                                </div>
+                                <div class="input-group">
+                                    <label>Email:</label>
+                                    <input type="email" id="register-email" placeholder="Nhập email">
+                                </div>
+                                <div class="input-group">
+                                    <label>Mật khẩu:</label>
+                                    <input type="password" id="register-password" placeholder="Nhập password">
+                                </div>
+                                <div class="input-group">
+                                    <label>Xác nhận mật khẩu:</label>
+                                    <input type="password" id="register-confirm" placeholder="Nhập lại password">
+                                </div>
+                                <button id="btn-register" class="btn-primary">Đăng Ký</button>
+                            </div>
+
+                            <div id="auth-status" class="status-message"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Screen: Main Menu/Lobby -->
+            <div id="screen-lobby" class="screen">
+                <div class="lobby-container">
+                    <div class="lobby-sidebar">
+                        <div class="menu-section">
+                            <h3>Menu</h3>
+                            <button class="menu-btn" data-action="quick-match">⚡ Tìm Trận Nhanh</button>
+                            <button class="menu-btn" data-action="ranked-match">🏆 Xếp Hạng</button>
+                            <button class="menu-btn" data-action="create-room">🏠 Tạo Phòng</button>
+                            <button class="menu-btn" data-action="join-room">🚪 Vào Phòng</button>
+                            <button class="menu-btn" data-action="friend-challenge">👥 Thách Đấu</button>
+                        </div>
+
+                        <div class="menu-section">
+                            <h3>Khác</h3>
+                            <button class="menu-btn" data-action="leaderboard">📊 Bảng Xếp Hạng</button>
+                            <button class="menu-btn" data-action="history">📜 Lịch Sử</button>
+                            <button class="menu-btn" data-action="practice">🎯 Luyện Tập</button>
+                        </div>
+                    </div>
+
+                    <div class="lobby-main">
+                        <div class="online-stats">
+                            <span>👥 Online: <strong id="online-count">-</strong></span>
+                            <span>🎮 Đang chơi: <strong id="playing-count">-</strong></span>
+                        </div>
+
+                        <div id="rooms-list">
+                            <h3>Danh Sách Phòng</h3>
+                            <div class="rooms-grid" id="rooms-container">
+                                <!-- Rooms will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Screen: Room Waiting -->
+            <div id="screen-room" class="screen">
+                <div class="room-container">
+                    <div class="room-header">
+                        <h2 id="room-title">Phòng #12345</h2>
+                        <button id="btn-leave-room" class="btn-danger">Rời Phòng</button>
+                    </div>
+
+                    <div class="room-content">
+                        <div class="players-area">
+                            <div class="player-slot red-side">
+                                <div class="player-avatar">🔴</div>
+                                <div class="player-info" id="red-player-info">
+                                    <div class="player-name">Đợi người chơi...</div>
+                                    <div class="player-rating">-</div>
+                                    <div class="ready-status">❌ Chưa sẵn sàng</div>
+                                </div>
+                            </div>
+
+                            <div class="vs-divider">VS</div>
+
+                            <div class="player-slot black-side">
+                                <div class="player-avatar">⚫</div>
+                                <div class="player-info" id="black-player-info">
+                                    <div class="player-name">Đợi người chơi...</div>
+                                    <div class="player-rating">-</div>
+                                    <div class="ready-status">❌ Chưa sẵn sàng</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="room-settings">
+                            <h3>Cài Đặt Phòng</h3>
+                            <div class="setting-item">
+                                <label>Thời gian (phút):</label>
+                                <select id="room-time">
+                                    <option value="5">5 phút</option>
+                                    <option value="10" selected>10 phút</option>
+                                    <option value="15">15 phút</option>
+                                    <option value="30">30 phút</option>
+                                    <option value="0">Không giới hạn</option>
+                                </select>
+                            </div>
+                            <div class="setting-item">
+                                <label>Chế độ:</label>
+                                <select id="room-mode">
+                                    <option value="normal" selected>Thường</option>
+                                    <option value="ranked">Xếp hạng</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="room-chat">
+                            <h3>Chat</h3>
+                            <div class="chat-messages" id="room-chat-messages">
+                                <!-- Chat messages -->
+                            </div>
+                            <div class="chat-input">
+                                <input type="text" id="room-chat-input" placeholder="Nhập tin nhắn...">
+                                <button id="btn-send-chat">Gửi</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="room-footer">
+                        <button id="btn-ready-toggle" class="btn-primary btn-large">Sẵn Sàng</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Screen: Game Board -->
+            <div id="screen-game" class="screen">
+                <div class="game-layout">
+                    <div class="game-left">
+                        <!-- Opponent Info -->
+                        <div class="player-panel opponent-panel">
+                            <div class="player-avatar">⚫</div>
+                            <div class="player-details">
+                                <div class="player-name" id="opponent-name">Đối thủ</div>
+                                <div class="player-rating" id="opponent-rating">Rating: 1500</div>
+                            </div>
+                            <div class="timer-display" id="opponent-timer">10:00</div>
+                        </div>
+
+                        <!-- Chess Board -->
+                        <div id="xiangqi-board"></div>
+
+                        <!-- Current Player Info -->
+                        <div class="player-panel current-panel">
+                            <div class="player-avatar">🔴</div>
+                            <div class="player-details">
+                                <div class="player-name" id="current-name">Bạn</div>
+                                <div class="player-rating" id="current-rating">Rating: 1500</div>
+                            </div>
+                            <div class="timer-display" id="current-timer">10:00</div>
+                        </div>
+                    </div>
+
+                    <div class="game-right">
+                        <!-- Turn Indicator -->
+                        <div class="turn-indicator" id="turn-indicator">
+                            <span id="turn-text">⏳ Lượt đối thủ</span>
+                        </div>
+
+                        <!-- Move History -->
+                        <div class="move-history">
+                            <h3>Lịch Sử Nước Đi</h3>
+                            <div class="moves-list" id="moves-list">
+                                <!-- Moves will appear here -->
+                            </div>
+                        </div>
+
+                        <!-- Game Chat -->
+                        <div class="game-chat">
+                            <h3>Chat</h3>
+                            <div class="chat-messages" id="game-chat-messages">
+                                <!-- Chat messages -->
+                            </div>
+                            <div class="chat-input">
+                                <input type="text" id="game-chat-input" placeholder="Nhập tin nhắn...">
+                                <button id="btn-game-chat-send">💬</button>
+                            </div>
+                        </div>
+
+                        <!-- Game Controls -->
+                        <div class="game-controls">
+                            <button id="btn-resign" class="btn-danger">🏳️ Đầu Hàng</button>
+                            <button id="btn-draw-offer" class="btn-warning">🤝 Xin Hòa</button>
+                            <button id="btn-leave-game" class="btn-secondary">🚪 Rời Trận</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Screen: Leaderboard -->
+            <div id="screen-leaderboard" class="screen">
+                <div class="leaderboard-container">
+                    <div class="leaderboard-header">
+                        <h2>📊 Bảng Xếp Hạng</h2>
+                        <div class="leaderboard-tabs">
+                            <button class="tab-btn active" data-period="all">Tổng</button>
+                            <button class="tab-btn" data-period="month">Tháng</button>
+                            <button class="tab-btn" data-period="week">Tuần</button>
+                        </div>
+                        <button id="btn-back-to-lobby" class="btn-secondary">⬅️ Quay Lại</button>
+                    </div>
+
+                    <div class="leaderboard-content">
+                        <table class="leaderboard-table">
+                            <thead>
+                                <tr>
+                                    <th>Hạng</th>
+                                    <th>Tên</th>
+                                    <th>Rating</th>
+                                    <th>Thắng</th>
+                                    <th>Thua</th>
+                                    <th>Hòa</th>
+                                    <th>Tỷ Lệ</th>
+                                </tr>
+                            </thead>
+                            <tbody id="leaderboard-body">
+                                <!-- Leaderboard rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Screen: Match History -->
+            <div id="screen-history" class="screen">
+                <div class="history-container">
+                    <div class="history-header">
+                        <h2>📜 Lịch Sử Trận Đấu</h2>
+                        <button id="btn-history-back" class="btn-secondary">⬅️ Quay Lại</button>
+                    </div>
+
+                    <div class="history-filters">
+                        <select id="history-filter">
+                            <option value="all">Tất cả</option>
+                            <option value="win">Thắng</option>
+                            <option value="loss">Thua</option>
+                            <option value="draw">Hòa</option>
+                        </select>
+                        <input type="text" id="history-search" placeholder="Tìm đối thủ...">
+                    </div>
+
+                    <div class="history-list" id="history-list">
+                        <!-- Match history items -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Screen: Replay -->
+            <div id="screen-replay" class="screen">
+                <div class="replay-container">
+                    <div class="replay-header">
+                        <h2 id="replay-title">📹 Xem Lại Trận Đấu</h2>
+                        <button id="btn-close-replay" class="btn-secondary">❌ Đóng</button>
+                    </div>
+
+                    <div class="replay-content">
+                        <div class="replay-board-area">
+                            <div id="replay-board"></div>
+                        </div>
+
+                        <div class="replay-controls-area">
+                            <div class="replay-info">
+                                <div class="replay-player">
+                                    <span class="red-label">🔴</span>
+                                    <span id="replay-red-name">Player 1</span>
+                                </div>
+                                <div class="replay-result" id="replay-result">1-0</div>
+                                <div class="replay-player">
+                                    <span id="replay-black-name">Player 2</span>
+                                    <span class="black-label">⚫</span>
+                                </div>
+                            </div>
+
+                            <div class="replay-timeline">
+                                <button id="btn-replay-first">⏮️</button>
+                                <button id="btn-replay-prev">⏪</button>
+                                <button id="btn-replay-play">▶️</button>
+                                <button id="btn-replay-next">⏩</button>
+                                <button id="btn-replay-last">⏭️</button>
+                            </div>
+
+                            <div class="replay-progress">
+                                <input type="range" id="replay-slider" min="0" max="100" value="0">
+                                <span id="replay-move-counter">Nước đi: 0 / 0</span>
+                            </div>
+
+                            <div class="replay-moves">
+                                <h3>Nước Đi</h3>
+                                <div class="replay-moves-list" id="replay-moves-list">
+                                    <!-- Moves list -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Screen: Settings -->
+            <div id="screen-settings" class="screen">
+                <div class="settings-container">
+                    <div class="settings-header">
+                        <h2>⚙️ Cài Đặt</h2>
+                        <button id="btn-close-settings" class="btn-secondary">❌ Đóng</button>
+                    </div>
+
+                    <div class="settings-content">
+                        <div class="settings-section">
+                            <h3>🎮 Trò Chơi</h3>
+                            <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="setting-sound" checked>
+                                    Âm thanh
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="setting-music" checked>
+                                    Nhạc nền
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="setting-hints" checked>
+                                    Hiện gợi ý nước đi
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="setting-animations" checked>
+                                    Hiệu ứng di chuyển
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="settings-section">
+                            <h3>🎨 Giao Diện</h3>
+                            <div class="setting-item">
+                                <label>Theme:</label>
+                                <select id="setting-theme">
+                                    <option value="classic">Cổ điển</option>
+                                    <option value="modern">Hiện đại</option>
+                                    <option value="wood">Gỗ</option>
+                                </select>
+                            </div>
+                            <div class="setting-item">
+                                <label>Màu bàn cờ:</label>
+                                <select id="setting-board-color">
+                                    <option value="beige">Be</option>
+                                    <option value="green">Xanh lá</option>
+                                    <option value="brown">Nâu</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="settings-section">
+                            <h3>🔔 Thông Báo</h3>
+                            <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="setting-notify-turn" checked>
+                                    Thông báo lượt đi
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="setting-notify-challenge" checked>
+                                    Thông báo thách đấu
+                                </label>
+                            </div>
+                            <div class="setting-item">
+                                <label>
+                                    <input type="checkbox" id="setting-notify-message" checked>
+                                    Thông báo tin nhắn
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="settings-section">
+                            <h3>👤 Tài Khoản</h3>
+                            <button id="btn-change-password" class="btn-primary">Đổi Mật Khẩu</button>
+                            <button id="btn-delete-account" class="btn-danger">Xóa Tài Khoản</button>
+                        </div>
+
+                        <div class="settings-section">
+                            <h3>ℹ️ Thông Tin</h3>
+                            <p>Phiên bản: 1.0.0</p>
+                            <p>Server: <span id="settings-server-info">-</span></p>
+                            <button id="btn-about">Giới Thiệu</button>
+                            <button id="btn-rules">Luật Chơi</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Modal: Game Result -->
+        <div id="modal-result" class="modal">
+            <div class="modal-content result-modal">
+                <div class="result-header" id="result-header">
+                    <h2 id="result-title">🏆 Chiến Thắng!</h2>
+                </div>
+                <div class="result-body">
+                    <div class="result-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Kết quả:</span>
+                            <span class="stat-value" id="result-outcome">1-0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Số nước đi:</span>
+                            <span class="stat-value" id="result-moves">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Thời gian:</span>
+                            <span class="stat-value" id="result-time">10:00</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Rating thay đổi:</span>
+                            <span class="stat-value" id="result-rating-change">+15</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Rating mới:</span>
+                            <span class="stat-value" id="result-new-rating">1515</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="result-footer">
+                    <button id="btn-result-replay" class="btn-primary">📹 Xem Lại</button>
+                    <button id="btn-result-rematch" class="btn-secondary">🔄 Đấu Lại</button>
+                    <button id="btn-result-lobby" class="btn-secondary">🏠 Về Lobby</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Draw Offer -->
+        <div id="modal-draw" class="modal">
+            <div class="modal-content">
+                <h3>🤝 Đối thủ xin hòa</h3>
+                <p>Đối thủ đề nghị hòa. Bạn có đồng ý không?</p>
+                <div class="modal-buttons">
+                    <button id="btn-draw-accept" class="btn-primary">Đồng Ý</button>
+                    <button id="btn-draw-decline" class="btn-danger">Từ Chối</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Modal: Challenge -->
+        <div id="modal-challenge" class="modal">
+            <div class="modal-content">
+                <h3>⚔️ Lời Thách Đấu</h3>
+                <p><strong id="challenge-from">Player</strong> mời bạn đấu!</p>
+                <div class="modal-buttons">
+                    <button id="btn-challenge-accept" class="btn-primary">Chấp Nhận</button>
+                    <button id="btn-challenge-decline" class="btn-danger">Từ Chối</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load Scripts -->
+    <script type="module" src="src/app/app.js"></script>
+</body>
+
+</html>
