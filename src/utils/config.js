@@ -5,7 +5,7 @@
 const ENV = {
     development: {
         SERVER_HOST: "localhost",
-        SERVER_PORT: 8080,  // Changed to match C server
+        SERVER_PORT: 8081,  // WebSocket bridge port
         WS_PROTOCOL: "ws",
         ENABLE_LOGGING: true,
         ENABLE_DEBUG: true,

@@ -1,0 +1,12 @@
+{
+  "name": "cotuong-websocket-bridge",
+  "version": "1.0.0",
+  "description": "WebSocket to TCP bridge for Xiangqi game",
+  "main": "ws-bridge.js",
+  "scripts": {
+    "start": "node ws-bridge.js"
+  },
+  "dependencies": {
+    "ws": "^8.14.2"
+  }
+}

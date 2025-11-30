@@ -105,7 +105,10 @@ class NetworkGameController extends GameController {
                 password
             );
             console.log("[NetworkGame] Registration successful:", response);
-            return response;
+            return {
+                status: 'success',
+                message: response.message || 'Registration successful'
+            };
         } catch (error) {
             console.error("[NetworkGame] Registration failed:", error);
             throw error;
@@ -117,11 +120,24 @@ class NetworkGameController extends GameController {
         try {
             const response = await this.network.login(username, password);
 
-            this.token = response.payload.token;
-            this.userId = response.payload.user_id;
+            // Parse payload if it's a JSON string
+            let payload = response.payload;
+            if (typeof payload === 'string') {
+                payload = JSON.parse(payload);
+            }
+
+            this.token = payload.token;
+            this.userId = payload.user_id;
 
             console.log("[NetworkGame] Login successful, user:", this.userId);
-            return response;
+            
+            // Return with parsed payload
+            return {
+                status: 'success',
+                username: payload.username,
+                token: payload.token,
+                rating: payload.rating
+            };
         } catch (error) {
             console.error("[NetworkGame] Login failed:", error);
             throw error;

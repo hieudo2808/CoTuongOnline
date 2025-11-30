@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lobby - Cờ Tướng Online</title>
+    <!-- Lobby page has inline styles only -->
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .lobby-page {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .lobby-header {
+            background: white;
+            padding: 15px 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .lobby-header h1 {
+            margin: 0;
+            font-size: 1.8em;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #f8f9fa;
+            padding: 8px 15px;
+            border-radius: 20px;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        .user-details {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .user-name {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .user-rating {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .icon-btn {
+            padding: 8px 12px;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 18px;
+        }
+
+        .icon-btn:hover {
+            background: #f8f9fa;
+            transform: scale(1.05);
+        }
+
+        .lobby-content {
+            flex: 1;
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        .lobby-sidebar {
+            width: 250px;
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            overflow-y: auto;
+        }
+
+        .menu-section {
+            margin-bottom: 25px;
+        }
+
+        .menu-section h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .menu-btn {
+            width: 100%;
+            padding: 12px 15px;
+            margin-bottom: 8px;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .menu-btn:hover {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: transparent;
+            transform: translateX(5px);
+        }
+
+        .lobby-main {
+            flex: 1;
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .online-stats {
+            display: flex;
+            gap: 30px;
+            margin-bottom: 25px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .online-stats span {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .online-stats strong {
+            color: #667eea;
+            font-size: 18px;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .section-header h2 {
+            margin: 0;
+            color: #333;
+        }
+
+        .btn-primary {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-danger {
+            padding: 10px 20px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .searching-indicator {
+            display: none;
+            text-align: center;
+            padding: 40px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .searching-indicator.active {
+            display: block;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            margin: 0 auto 20px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .match-found {
+            display: none;
+            text-align: center;
+            padding: 40px;
+            background: #d4edda;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .match-found.active {
+            display: block;
+            animation: slideDown 0.5s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .leaderboard-preview {
+            margin-top: 20px;
+        }
+
+        .leaderboard-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .leaderboard-table th {
+            padding: 12px;
+            background: #f8f9fa;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .leaderboard-table td {
+            padding: 12px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .leaderboard-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .rank-badge {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            line-height: 30px;
+            text-align: center;
+            border-radius: 50%;
+            font-weight: bold;
+        }
+
+        .rank-badge.gold {
+            background: #ffd700;
+            color: #fff;
+        }
+
+        .rank-badge.silver {
+            background: #c0c0c0;
+            color: #fff;
+        }
+
+        .rank-badge.bronze {
+            background: #cd7f32;
+            color: #fff;
+        }
+
+        .status-message {
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            text-align: center;
+        }
+
+        .status-message.success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-message.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-message.info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+    </style>
+</head>
+<body>
+    <div class="lobby-page">
+        <header class="lobby-header">
+            <h1>🎮 Cờ Tướng Online</h1>
+            <div class="user-info">
+                <div class="user-profile">
+                    <div class="user-avatar" id="user-avatar">U</div>
+                    <div class="user-details">
+                        <div class="user-name" id="user-name">Username</div>
+                        <div class="user-rating" id="user-rating">⭐ Rating: 1500</div>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button class="icon-btn" id="btn-refresh" title="Refresh">🔄</button>
+                    <button class="icon-btn" id="btn-settings" title="Settings">⚙️</button>
+                    <button class="icon-btn" id="btn-logout" title="Logout">🚪</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="lobby-content">
+            <aside class="lobby-sidebar">
+                <div class="menu-section">
+                    <h3>🎮 Chơi Game</h3>
+                    <button class="menu-btn" data-action="quick-match">⚡ Tìm Trận Nhanh</button>
+                    <button class="menu-btn" data-action="ranked-match">🏆 Xếp Hạng</button>
+                    <button class="menu-btn" data-action="practice">🎯 Luyện Tập</button>
+                </div>
+
+                <div class="menu-section">
+                    <h3>📊 Thống Kê</h3>
+                    <button class="menu-btn" data-action="leaderboard">🏅 Bảng Xếp Hạng</button>
+                    <button class="menu-btn" data-action="history">📜 Lịch Sử</button>
+                    <button class="menu-btn" data-action="profile">👤 Hồ Sơ</button>
+                </div>
+
+                <div class="menu-section">
+                    <h3>ℹ️ Khác</h3>
+                    <button class="menu-btn" data-action="rules">📖 Luật Chơi</button>
+                    <button class="menu-btn" data-action="about">💡 Giới Thiệu</button>
+                </div>
+            </aside>
+
+            <main class="lobby-main">
+                <div class="online-stats">
+                    <span>👥 Online: <strong id="online-count">-</strong></span>
+                    <span>🎮 Đang chơi: <strong id="playing-count">-</strong></span>
+                    <span>⏳ Đang tìm: <strong id="searching-count">-</strong></span>
+                </div>
+
+                <div class="section-header">
+                    <h2>Tìm Đối Thủ</h2>
+                    <button class="btn-primary" id="btn-find-match">⚡ Tìm Trận</button>
+                </div>
+
+                <div id="searching-indicator" class="searching-indicator">
+                    <div class="spinner"></div>
+                    <h3>🔍 Đang tìm đối thủ...</h3>
+                    <p>Vui lòng chờ trong giây lát</p>
+                    <button class="btn-danger" id="btn-cancel-search">❌ Hủy</button>
+                </div>
+
+                <div id="match-found" class="match-found">
+                    <h2>✅ Tìm thấy đối thủ!</h2>
+                    <p id="opponent-info">Đối thủ: <strong>Player123</strong> (Rating: 1520)</p>
+                    <button class="btn-primary" id="btn-start-game">🎮 Bắt Đầu</button>
+                </div>
+
+                <div id="status-message" class="status-message" style="display: none;"></div>
+
+                <div class="leaderboard-preview">
+                    <div class="section-header">
+                        <h2>🏆 Top Players</h2>
+                        <button class="btn-primary" data-action="leaderboard">Xem Thêm</button>
+                    </div>
+                    <table class="leaderboard-table">
+                        <thead>
+                            <tr>
+                                <th>Hạng</th>
+                                <th>Tên</th>
+                                <th>Rating</th>
+                                <th>Trận</th>
+                                <th>Tỷ Lệ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboard-body">
+                            <tr>
+                                <td><span class="rank-badge gold">1</span></td>
+                                <td>Loading...</td>
+                                <td>-</td>
+                                <td>-</td>
+                                <td>-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script type="module">
+        // Import NetworkGameController for reconnection
+        import NetworkGameController from '../src/core/networkGameController.js?v=7';
+        
+        // Initialize lobby in async IIFE
+        (async () => {
+            // Check authentication
+            const userDataStr = localStorage.getItem('xiangqi_user');
+            if (!userDataStr) {
+                window.location.href = 'login.html';
+                return;
+            }
+
+            const userData = JSON.parse(userDataStr);
+            
+            // Display user info
+            document.getElementById('user-name').textContent = userData.username;
+            document.getElementById('user-rating').textContent = `⭐ Rating: ${userData.rating || 1500}`;
+            document.getElementById('user-avatar').textContent = userData.username.charAt(0).toUpperCase();
+
+            // Get game controller - reconnect if needed
+            let gameController = window.gameController;
+            
+            // If no controller or network lost, reconnect using stored credentials
+            if (!gameController || !gameController.network) {
+                const serverInfoStr = localStorage.getItem('xiangqi_server');
+                if (!serverInfoStr) {
+                    showMessage('error', '❌ Chưa kết nối server. Vui lòng đăng nhập lại.');
+                    setTimeout(() => {
+                        window.location.href = 'login.html';
+                    }, 2000);
+                    return;
+                }
+                
+                // Reconnect to server
+                const serverInfo = JSON.parse(serverInfoStr);
+                gameController = new NetworkGameController();
+                
+                try {
+                    const connected = await gameController.connectToServer(serverInfo.host, serverInfo.port);
+                    if (!connected) {
+                        throw new Error('Không thể kết nối lại server');
+                    }
+                    
+                    // Re-authenticate with stored token
+                    if (userData.token) {
+                        // Set token for authenticated requests
+                        gameController.network.token = userData.token;
+                    }
+                    
+                    window.gameController = gameController;
+                    console.log('✅ Reconnected to server');
+                } catch (error) {
+                    console.error('Reconnection failed:', error);
+                    showMessage('error', '❌ Mất kết nối. Vui lòng đăng nhập lại.');
+                    setTimeout(() => {
+                        window.location.href = 'login.html';
+                    }, 2000);
+                    return;
+                }
+            }
+
+            console.log('✅ Game controller ready:', gameController);
+            
+            // Make gameController available to rest of script
+            window.gameController = gameController;
+
+        // Menu actions
+        document.querySelectorAll('.menu-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const action = btn.dataset.action;
+                handleMenuAction(action);
+            });
+        });
+
+        function handleMenuAction(action) {
+            switch(action) {
+                case 'quick-match':
+                case 'ranked-match':
+                    document.getElementById('btn-find-match').click();
+                    break;
+                case 'practice':
+                    window.location.href = '../app.html';
+                    break;
+                case 'leaderboard':
+                    loadLeaderboard();
+                    break;
+                case 'history':
+                    showMessage('info', 'Chức năng đang phát triển');
+                    break;
+                case 'rules':
+                    window.open('../public/rule.html', '_blank');
+                    break;
+                case 'about':
+                    showMessage('info', 'Cờ Tướng Online v1.0 - Developed with ❤️');
+                    break;
+                default:
+                    showMessage('info', 'Chức năng đang phát triển');
+            }
+        }
+
+        // Find match button
+        document.getElementById('btn-find-match').addEventListener('click', async () => {
+            const searchingDiv = document.getElementById('searching-indicator');
+            const btnFind = document.getElementById('btn-find-match');
+            
+            btnFind.disabled = true;
+            searchingDiv.classList.add('active');
+            
+            try {
+                if (gameController && gameController.network) {
+                    const response = await gameController.findMatch();
+                    
+                    if (response.status === 'searching') {
+                        showMessage('info', '🔍 Đang tìm đối thủ...');
+                    } else if (response.status === 'matched') {
+                        handleMatchFound(response);
+                    }
+                } else {
+                    throw new Error('Chưa kết nối server');
+                }
+            } catch (error) {
+                showMessage('error', `❌ Lỗi: ${error.message}`);
+                searchingDiv.classList.remove('active');
+                btnFind.disabled = false;
+            }
+        });
+
+        // Cancel search button
+        document.getElementById('btn-cancel-search').addEventListener('click', () => {
+            document.getElementById('searching-indicator').classList.remove('active');
+            document.getElementById('btn-find-match').disabled = false;
+            showMessage('info', 'Đã hủy tìm kiếm');
+        });
+
+        // Handle match found
+        function handleMatchFound(matchData) {
+            const searchingDiv = document.getElementById('searching-indicator');
+            const matchFoundDiv = document.getElementById('match-found');
+            
+            searchingDiv.classList.remove('active');
+            matchFoundDiv.classList.add('active');
+            
+            document.getElementById('opponent-info').innerHTML = 
+                `Đối thủ: <strong>${matchData.opponent || 'Unknown'}</strong> (Rating: ${matchData.opponent_rating || 1500})`;
+            
+            // Store match data
+            localStorage.setItem('current_match', JSON.stringify(matchData));
+        }
+
+        // Start game button
+        document.getElementById('btn-start-game').addEventListener('click', () => {
+            window.location.href = 'game.html';
+        });
+
+        // Logout button
+        document.getElementById('btn-logout').addEventListener('click', () => {
+            if (confirm('Bạn có chắc muốn đăng xuất?')) {
+                localStorage.removeItem('xiangqi_user');
+                localStorage.removeItem('current_match');
+                window.location.href = 'login.html';
+            }
+        });
+
+        // Refresh button
+        document.getElementById('btn-refresh').addEventListener('click', () => {
+            location.reload();
+        });
+
+        // Load leaderboard
+        async function loadLeaderboard() {
+            try {
+                if (gameController && gameController.network) {
+                    const leaderboard = await gameController.getLeaderboard();
+                    // getLeaderboard() already returns the array directly
+                    displayLeaderboard(leaderboard || []);
+                } else {
+                    console.warn('⚠️ gameController or network not ready');
+                }
+            } catch (error) {
+                console.error('Failed to load leaderboard:', error);
+            }
+        }
+
+        function displayLeaderboard(leaderboard) {
+            const tbody = document.getElementById('leaderboard-body');
+            tbody.innerHTML = '';
+            
+            leaderboard.slice(0, 5).forEach((player, index) => {
+                const rank = index + 1;
+                let rankBadge = `<span class="rank-badge">${rank}</span>`;
+                
+                if (rank === 1) rankBadge = `<span class="rank-badge gold">👑</span>`;
+                else if (rank === 2) rankBadge = `<span class="rank-badge silver">🥈</span>`;
+                else if (rank === 3) rankBadge = `<span class="rank-badge bronze">🥉</span>`;
+                
+                const winRate = ((player.wins / (player.wins + player.losses + player.draws)) * 100).toFixed(1);
+                
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${rankBadge}</td>
+                        <td><strong>${player.username}</strong></td>
+                        <td><strong>${player.rating}</strong></td>
+                        <td>${player.wins + player.losses + player.draws}</td>
+                        <td>${winRate}%</td>
+                    </tr>
+                `;
+            });
+        }
+
+        // Show message
+        function showMessage(type, text) {
+            const msgDiv = document.getElementById('status-message');
+            msgDiv.className = `status-message ${type}`;
+            msgDiv.textContent = text;
+            msgDiv.style.display = 'block';
+            
+            setTimeout(() => {
+                msgDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        // Simulate online stats (replace with real data from server)
+        function updateStats() {
+            document.getElementById('online-count').textContent = Math.floor(Math.random() * 100) + 50;
+            document.getElementById('playing-count').textContent = Math.floor(Math.random() * 40) + 10;
+            document.getElementById('searching-count').textContent = Math.floor(Math.random() * 20);
+        }
+
+        updateStats();
+        setInterval(updateStats, 10000);
+
+        // Load initial leaderboard
+        setTimeout(loadLeaderboard, 500);
+        
+        })(); // Close async IIFE
+    </script>
+</body>
+</html>

@@ -129,10 +129,11 @@ class NetworkBridge {
             this.pendingRequests.set(seq, {
                 resolve: (message) => {
                     clearTimeout(timeoutId);
-                    if (message.payload && message.payload.success === false) {
+                    // Check if response indicates failure
+                    if (message.success === false || message.type === 'error') {
                         reject(
                             new Error(
-                                message.payload.message || "Request failed"
+                                message.message || "Request failed"
                             )
                         );
                     } else {
@@ -184,21 +185,24 @@ class NetworkBridge {
     }
 
     /**
-     * Hash password using SHA-256
+     * Hash password using DJB2 algorithm (same as C server)
      */
-    async hashPassword(password) {
-        const encoder = new TextEncoder();
-        const data = encoder.encode(password);
-        const hashBuffer = await window.crypto.subtle.digest("SHA-256", data);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+    hashPassword(password) {
+        let hash = 5381;
+        for (let i = 0; i < password.length; i++) {
+            hash = ((hash << 5) + hash) + password.charCodeAt(i);
+            hash = hash & hash; // Convert to 32bit integer
+        }
+        // Convert to hex string (64 chars like C server)
+        const hashStr = (hash >>> 0).toString(16).padStart(8, '0');
+        return hashStr.padEnd(64, '0');
     }
 
     /**
      * Register account
      */
-    async register(username, email, password) {
-        const passwordHash = await this.hashPassword(password);
+    register(username, email, password) {
+        const passwordHash = this.hashPassword(password);
         return this.sendAndWait(
             "register",
             {
@@ -213,8 +217,8 @@ class NetworkBridge {
     /**
      * Login
      */
-    async login(username, password) {
-        const passwordHash = await this.hashPassword(password);
+    login(username, password) {
+        const passwordHash = this.hashPassword(password);
         return this.sendAndWait(
             "login",
             {
