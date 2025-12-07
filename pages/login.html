@@ -415,6 +415,15 @@
                     token: response.token,
                     rating: response.rating
                 }));
+                // Ensure network controller has the session token set (for immediate use)
+                try {
+                    if (window.gameController && window.gameController.network) {
+                        window.gameController.token = response.token;
+                        window.gameController.network.sessionToken = response.token;
+                    }
+                } catch (e) {
+                    // ignore
+                }
                 
                 setTimeout(() => {
                     window.location.href = 'lobby.html';

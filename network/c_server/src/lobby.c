@@ -33,7 +33,17 @@ void lobby_shutdown(void) { ready_count = 0; }
 void lobby_set_ready(int user_id, const char* username, int rating,
                      bool ready) {
     if (ready) {
-        // Add to ready list
+        // Add to ready list (avoid duplicates)
+        for (int i = 0; i < ready_count; i++) {
+            if (ready_players[i].user_id == user_id) {
+                // Already in ready list, update timestamp/rating
+                ready_players[i].rating = rating;
+                ready_players[i].ready_since = time(NULL);
+                printf("[Lobby] Updated ready player: %s (ID: %d)\n", username, user_id);
+                return;
+            }
+        }
+
         if (ready_count < MAX_READY_PLAYERS) {
             ready_players[ready_count].user_id = user_id;
             strncpy(ready_players[ready_count].username, username, 63);
@@ -41,6 +51,9 @@ void lobby_set_ready(int user_id, const char* username, int rating,
             ready_players[ready_count].ready = true;
             ready_players[ready_count].ready_since = time(NULL);
             ready_count++;
+            printf("[Lobby] Added ready player: %s (ID: %d). Ready count=%d\n", username, user_id, ready_count);
+        } else {
+            printf("[Lobby] Ready list full, cannot add: %s (ID: %d)\n", username, user_id);
         }
     } else {
         // Remove from ready list

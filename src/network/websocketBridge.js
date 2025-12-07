@@ -11,6 +11,11 @@ class NetworkBridge {
         this.sessionToken = null;
         this.eventListeners = new Map();
         this.pendingRequests = new Map();
+        // Match search state: when server replies "No opponent found" we wait
+        // for a subsequent `match_found` event before emitting an error to UI.
+        this._matchSearchWaiting = false;
+        this._matchSearchTimer = null;
+        this._matchSearchTimeoutMs = 60000; // 60 seconds
     }
 
     /**
@@ -39,6 +44,10 @@ class NetworkBridge {
                 this.ws.onerror = (error) => {
                     console.error("[WebSocket] Error:", error);
                     this.emit("error", error);
+                    // Reject any pending requests immediately so callers don't wait for timeout
+                    try {
+                        this._rejectAllPending(new Error('WebSocket error'));
+                    } catch (e) {}
                     reject(error);
                 };
 
@@ -46,6 +55,8 @@ class NetworkBridge {
                     console.log("[WebSocket] Disconnected");
                     this.connected = false;
                     this.emit("disconnected");
+                    // Reject outstanding requests when connection closes
+                    try { this._rejectAllPending(new Error('WebSocket closed')); } catch (e) {}
                 };
 
                 // Connection timeout
@@ -66,26 +77,148 @@ class NetworkBridge {
      */
     handleMessage(data) {
         try {
-            const message = JSON.parse(data);
-            console.log("[WebSocket] Received:", message.type);
+            // Log raw incoming data for debugging
+            console.log('[WebSocket] Raw message:', data);
 
-            // Store session token
+            let message;
+            try {
+                message = JSON.parse(data);
+            } catch (parseErr) {
+                console.error('[WebSocket] JSON.parse failed:', parseErr.message);
+                console.error('[WebSocket] Raw data:', data);
+                // Try to extract any useful info from the raw data
+                return;
+            }
+
+            // If parsed value is not an object, wrap it
+            if (!message || typeof message !== 'object' || Array.isArray(message)) {
+                console.warn('[WebSocket] Non-object message received:', message);
+                message = { type: 'unknown', raw: message };
+            }
+
+            // Normalize payload: server may send payload as object or stringified JSON
+            if (message.payload && typeof message.payload === 'string') {
+                try {
+                    message.payload = JSON.parse(message.payload);
+                } catch (e) {
+                    // leave as string
+                }
+            }
+
+            // Normalize top-level message text for easier handling
+            if (!message.message) {
+                if (message.payload && typeof message.payload === 'object') {
+                    if (message.payload.message) message.message = message.payload.message;
+                    else if (message.payload.error_code) message.message = message.payload.error_code;
+                }
+            }
+
+            // Special-case: server may immediately reply with an error saying
+            // "No opponent found" when matchmaking. Treat that as an
+            // acknowledgement and wait for a later `match_found` event. Start
+            // a timer and only emit an error if no match_found arrives.
+            const isNoOpponentMsgEarly =
+                message.type === 'error' && message.message && /no opponent/i.test(message.message);
+
+            if (isNoOpponentMsgEarly) {
+                if (this._matchSearchTimer) clearTimeout(this._matchSearchTimer);
+                this._matchSearchWaiting = true;
+                this._matchSearchTimer = setTimeout(() => {
+                    this._matchSearchWaiting = false;
+                    this._matchSearchTimer = null;
+                    try {
+                        this.emit('match_search_timeout', { message: message.message });
+                    } catch (e) {
+                        console.error('[WebSocket] Error emitting match_search_timeout:', e);
+                    }
+                    try {
+                        this.emit('error', new Error(message.message || 'No opponent found'));
+                    } catch (e) {
+                        console.error('[WebSocket] Error emitting error event:', e);
+                    }
+                }, this._matchSearchTimeoutMs);
+
+                // Do not log or emit this error immediately; wait for match_found
+                return;
+            }
+
+            // Log full message for easier debugging (type, message text, payload)
+            if (message.type === 'error' || message.type === 'response') {
+                console.log("[WebSocket] Received:", message.type, "seq:", message.seq, "message:", message.message || null);
+            } else {
+                console.log("[WebSocket] Received:", message.type, "seq:", message.seq);
+            }
+
+            
+
+            // Store session token (server may put token at top-level or inside payload)
             if (message.token) {
                 this.sessionToken = message.token;
+                console.log('[WebSocket] Token updated');
+            } else if (message.payload && message.payload.token) {
+                this.sessionToken = message.payload.token;
+                console.log('[WebSocket] Token updated from payload');
             }
 
-            // Resolve pending request if exists
+            // Resolve pending request if exists (most important: don't emit before resolving)
             if (message.seq && this.pendingRequests.has(message.seq)) {
-                const { resolve } = this.pendingRequests.get(message.seq);
-                this.pendingRequests.delete(message.seq);
-                resolve(message);
+                const pendingHandler = this.pendingRequests.get(message.seq);
+                try {
+                    console.log('[WebSocket] Resolving pending request seq=' + message.seq);
+                    pendingHandler.resolve(message);
+                } catch (e) {
+                    console.error('[WebSocket] Error in resolve callback:', e);
+                }
+                // Don't emit after resolving pending request (it's a response to a send/wait)
+                return;
             }
 
-            // Emit event
-            this.emit("message", message);
-            this.emit(message.type, message);
+            // Compatibility: some servers send a `response` with message "Match found"
+            // as the immediate reply to the requester while sending a separate
+            // `match_found` to the queued opponent. Normalize this by treating
+            // a response whose message includes "match found" as a
+            // `match_found` event as well so both clients handle the match the
+            // same way.
+            if (message.type === 'response' && message.message && /match found/i.test(message.message)) {
+                try {
+                    const mf = {
+                        type: 'match_found',
+                        seq: message.seq,
+                        payload: message.payload || null,
+                        message: message.message,
+                    };
+                    // Emit normalized match_found for client code that listens for it
+                    console.log('[WebSocket] Normalizing response -> match_found for seq=' + message.seq);
+                    this.emit('message', mf);
+                    this.emit('match_found', mf);
+                } catch (e) {
+                    console.error('[WebSocket] Error emitting normalized match_found:', e);
+                }
+                // Continue to also emit the original message below (so existing handlers still receive it)
+            }
+
+            // Emit event for unsolicited messages (like match_found, draw_offer, etc.)
+            try {
+                // If a match_found arrives while we were waiting, cancel the
+                // match search timer and clear waiting state.
+                if (message.type === 'match_found' && this._matchSearchWaiting) {
+                    if (this._matchSearchTimer) {
+                        clearTimeout(this._matchSearchTimer);
+                        this._matchSearchTimer = null;
+                    }
+                    this._matchSearchWaiting = false;
+                }
+
+                this.emit("message", message);
+                if (message.type) {
+                    console.log('[WebSocket] Emitting event:', message.type);
+                    this.emit(message.type, message);
+                }
+            } catch (e) {
+                console.error('[WebSocket] Error emitting event:', e);
+            }
         } catch (error) {
-            console.error("[WebSocket] Failed to parse message:", error);
+            console.error("[WebSocket] Unexpected error in handleMessage:", error);
         }
     }
 
@@ -100,11 +233,20 @@ class NetworkBridge {
         const message = {
             type,
             seq: this.seqCounter++,
-            token: this.sessionToken || "",
             payload,
         };
 
+        // Only include token when it's set (avoid sending empty string)
+        if (this.sessionToken) {
+            message.token = this.sessionToken;
+        }
+
         const json = JSON.stringify(message);
+        // Log outgoing message for debugging
+        try {
+            console.log('[WebSocket] Sending:', json);
+        } catch (e) {}
+
         this.ws.send(json);
 
         return message.seq;
@@ -115,34 +257,87 @@ class NetworkBridge {
      */
     sendAndWait(type, payload = {}, responseType = null, timeout = 10000) {
         return new Promise((resolve, reject) => {
-            const seq = this.send(type, payload);
+            if (!this.connected || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+                return reject(new Error('WebSocket not connected'));
+            }
+
+            // Reserve a sequence number and register pending handler BEFORE sending
+            const seq = this.seqCounter++;
 
             const timeoutId = setTimeout(() => {
+                // Cleanup
                 this.pendingRequests.delete(seq);
-                reject(
-                    new Error(
-                        `Timeout waiting for ${responseType || type}_response`
-                    )
+                const timeoutErr = new Error(
+                    `Timeout waiting for ${responseType || type}_response after ${timeout}ms`
                 );
+                console.error('[WebSocket] ' + timeoutErr.message);
+                reject(timeoutErr);
             }, timeout);
 
-            this.pendingRequests.set(seq, {
+            const pendingHandler = {
                 resolve: (message) => {
                     clearTimeout(timeoutId);
-                    // Check if response indicates failure
-                    if (message.success === false || message.type === 'error') {
-                        reject(
-                            new Error(
-                                message.message || "Request failed"
-                            )
-                        );
+                    this.pendingRequests.delete(seq);
+
+                    // Determine failure conditions (server uses multiple formats)
+                    const messagePayload = message.payload;
+                    const isErrorType = message.type === 'error';
+                    const isExplicitFailure = message.success === false;
+                    const payloadHasError = messagePayload && typeof messagePayload === 'object' && (messagePayload.error_code || messagePayload.message);
+
+                    if (isErrorType || isExplicitFailure || payloadHasError) {
+                        const errMsg = message.message || (messagePayload && messagePayload.message) || (messagePayload && messagePayload.error_code) || 'Request failed';
+                        console.error(`[WebSocket] Request ${type} failed:`, errMsg);
+                        reject(new Error(errMsg));
                     } else {
+                        console.log(`[WebSocket] Request ${type} succeeded`);
                         resolve(message);
                     }
                 },
-                reject,
-            });
+                reject: (err) => {
+                    clearTimeout(timeoutId);
+                    this.pendingRequests.delete(seq);
+                    reject(err);
+                },
+            };
+
+            this.pendingRequests.set(seq, pendingHandler);
+
+            // Build and send the message now that pending is registered
+            const message = {
+                type,
+                seq,
+                payload,
+            };
+            if (this.sessionToken) message.token = this.sessionToken;
+
+            const json = JSON.stringify(message);
+            try {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    try { console.log('[WebSocket] Sending (sendAndWait):', json); } catch (e) {}
+                    this.ws.send(json);
+                } else {
+                    // Socket closed after registration
+                    this.pendingRequests.delete(seq);
+                    clearTimeout(timeoutId);
+                    return reject(new Error('WebSocket closed before send'));
+                }
+            } catch (sendErr) {
+                this.pendingRequests.delete(seq);
+                clearTimeout(timeoutId);
+                return reject(sendErr);
+            }
         });
+    }
+
+    // Reject all pending requests with provided error
+    _rejectAllPending(err) {
+        try {
+            for (const [seq, handler] of this.pendingRequests.entries()) {
+                try { handler.reject(err); } catch (e) {}
+            }
+            this.pendingRequests.clear();
+        } catch (e) {}
     }
 
     /**
@@ -240,16 +435,41 @@ class NetworkBridge {
      * Set ready status
      */
     setReady(ready = true) {
-        return this.send("set_ready", { ready });
+        return this.sendAndWait("set_ready", { ready }, "set_ready", 5000);
     }
 
     /**
      * Find match
      */
-    async findMatch(matchType = "random", ratingTolerance = 100) {
-        return this.send("find_match", {
-            match_type: matchType,
-            rating_tolerance: ratingTolerance,
+    async findMatch(matchType = "random", ratingTolerance = 100, timeout = 60000) {
+        // Send a matchmaking request and wait for a later unsolicited `match_found` event.
+        // Some servers immediately reply "No opponent found" but will later emit
+        // a `match_found` event when an opponent becomes available. Treat the
+        // immediate response as an acknowledgement and wait for the event instead
+        // of rejecting the promise.
+        try {
+            this.send("find_match", {
+                mode: matchType === 'rated' ? 'rated' : 'random',
+                rating_tolerance: ratingTolerance,
+            });
+        } catch (err) {
+            return Promise.reject(err);
+        }
+
+        return new Promise((resolve, reject) => {
+            const onMatchFound = (msg) => {
+                clearTimeout(timerId);
+                this.off('match_found', onMatchFound);
+                resolve(msg);
+            };
+
+            // Timeout if no opponent found within given time
+            const timerId = setTimeout(() => {
+                this.off('match_found', onMatchFound);
+                reject(new Error('Timeout waiting for opponent'));
+            }, timeout);
+
+            this.on('match_found', onMatchFound);
         });
     }
 

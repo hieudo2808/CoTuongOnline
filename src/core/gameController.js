@@ -8,6 +8,7 @@ import { MoveNotation } from "../utils/moveNotation.js";
 export class GameController {
     constructor(initialPosition) {
         this.chessboard = new Board();
+        this.initialPosition = initialPosition;
         this.stack = []; // Move history
         this.ui = new UI();
 
@@ -21,6 +22,37 @@ export class GameController {
 
         // Bind event handlers
         this.bindEvents();
+        this.initListeners();
+    }
+
+    /**
+     * Reset the game to the initial position (keeps the same controller instance)
+     */
+    reset() {
+        // Clear move history
+        this.stack = [];
+
+        // Reinitialize board pieces
+        if (this.initialPosition) {
+            this.chessboard.initBoard(this.initialPosition);
+        } else {
+            // If no initial position saved, clear the board
+            this.chessboard.initBoard([]);
+        }
+
+        // Reset chessboard state
+        this.chessboard.turn = 'red';
+        this.chessboard.status = true;
+        this.chessboard.curPiece = null;
+        this.chessboard.turnCnt = 0;
+
+        // Clear and re-render UI
+        if (this.ui && typeof this.ui.clearBoard === 'function') {
+            this.ui.clearBoard();
+            this.ui.renderBoard(this.chessboard.board);
+        }
+
+        // Re-bind listeners for the new board state
         this.initListeners();
     }
 

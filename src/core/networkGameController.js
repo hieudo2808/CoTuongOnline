@@ -163,6 +163,12 @@ class NetworkGameController extends GameController {
             return response;
         } catch (error) {
             console.error("[NetworkGame] Find match failed:", error);
+            // Show user-friendly alert with server error message
+            try {
+                alert(error.message || 'Tìm trận thất bại');
+            } catch (e) {
+                // ignore if alert not available
+            }
             throw error;
         }
     }

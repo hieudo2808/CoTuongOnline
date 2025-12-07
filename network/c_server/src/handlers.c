@@ -19,23 +19,67 @@
 #include "server.h"
 #include "session.h"
 
+// Helper: Escape JSON string (prevent injection)
+static void escape_json_string(const char* src, char* dst, size_t dst_size) {
+    if (!src) {
+        dst[0] = '\0';
+        return;
+    }
+    
+    char* d = dst;
+    const char* s = src;
+    size_t remaining = dst_size - 1;
+    
+    while (*s && remaining > 1) {
+        if (*s == '"') {
+            if (remaining < 2) break;
+            *d++ = '\\';
+            *d++ = '"';
+            remaining -= 2;
+        } else if (*s == '\\') {
+            if (remaining < 2) break;
+            *d++ = '\\';
+            *d++ = '\\';
+            remaining -= 2;
+        } else if (*s == '\n') {
+            if (remaining < 2) break;
+            *d++ = '\\';
+            *d++ = 'n';
+            remaining -= 2;
+        } else if (*s == '\r') {
+            if (remaining < 2) break;
+            *d++ = '\\';
+            *d++ = 'r';
+            remaining -= 2;
+        } else {
+            *d++ = *s;
+            remaining--;
+        }
+        s++;
+    }
+    *d = '\0';
+}
+
 // Helper: Send response
 static void send_response(server_t* server, client_t* client, int seq, bool success,
                           const char* message, const char* payload) {
     char response[MAX_MESSAGE_SIZE];
+    char escaped_msg[512];
+    
+    // Escape message to prevent JSON injection
+    escape_json_string(message, escaped_msg, sizeof(escaped_msg));
 
     if (payload) {
         snprintf(response, sizeof(response),
-                 "{\"type\":\"%s\",\"seq\":%d,\"success\":%s,\"message\":\"%"
-                 "s\",\"payload\":%s}\n",
+                 "{\"type\":\"%s\",\"seq\":%d,\"success\":%s,\"message\":\"%s\",\"payload\":%s}\n",
                  success ? "response" : "error", seq,
-                 success ? "true" : "false", message ? message : "", payload);
+                 success ? "true" : "false", escaped_msg, payload);
     } else {
         snprintf(
             response, sizeof(response),
             "{\"type\":\"%s\",\"seq\":%d,\"success\":%s,\"message\":\"%s\"}\n",
             success ? "response" : "error", seq, success ? "true" : "false",
-            message ? message : "");
+            escaped_msg);
     }
 
     send_to_client(server, client->fd, response);
@@ -138,7 +182,8 @@ void handle_login(server_t* server, client_t* client, message_t* msg) {
         token, user_id, username, rating);
     send_response(server, client, msg->seq, true, "Login successful", payload);
 
-    printf("[Handler] User logged in: %s (ID: %d)\n", username, user_id);
+    // Log mapping of user -> client fd for debugging
+    printf("[Handler] User logged in: %s (ID: %d, fd=%d)\n", username, user_id, client->fd);
 }
 
 // Handler: Logout
@@ -173,6 +218,10 @@ void handle_set_ready(server_t* server, client_t* client, message_t* msg) {
                       NULL);
         return;
     }
+    // Attach authenticated user to current client mapping so server can send
+    // notifications back to this connection (in case of reconnects)
+    client->user_id = user_id;
+    client->authenticated = true;
 
     // Parse payload
     bool ready = json_get_bool(msg->payload_json, "ready");
@@ -213,11 +262,38 @@ void handle_find_match(server_t* server, client_t* client, message_t* msg) {
                       NULL);
         return;
     }
+    client->user_id = user_id;
+    client->authenticated = true;
+
+    // Debug log: incoming find_match
+    printf("[Handler] handle_find_match called: user_id=%d, seq=%d\n", user_id, msg->seq);
 
     // Parse payload
     const char* mode =
         json_get_string(msg->payload_json, "mode");  // "random" or "rated"
     bool rated = (mode && strcmp(mode, "rated") == 0);
+
+    // Ensure the requesting player is marked ready (in case client didn't call set_ready)
+    {
+        char username[64];
+        int rating;
+        if (db_get_user_by_id(user_id, username, NULL, &rating, NULL, NULL, NULL)) {
+            lobby_set_ready(user_id, username, rating, true);
+            printf("[Handler] Marked user_id=%d as ready (auto)\n", user_id);
+            // Broadcast updated ready list so other clients see the new player
+            char* ready_list = lobby_get_ready_list_json();
+            if (ready_list) {
+                char broadcast_msg[8192];
+                snprintf(broadcast_msg, sizeof(broadcast_msg),
+                         "{\"type\":\"ready_list_update\",\"payload\":%s}\n",
+                         ready_list);
+                broadcast_to_lobby(server, broadcast_msg);
+                free(ready_list);
+            }
+        } else {
+            printf("[Handler] Warning: failed to lookup user %d before queuing\n", user_id);
+        }
+    }
 
     // Find opponent
     int opponent_id;
@@ -233,11 +309,30 @@ void handle_find_match(server_t* server, client_t* client, message_t* msg) {
     }
 
     if (!found) {
-        send_response(server, client, msg->seq, false, "No opponent found", NULL);
+        // No opponent available right now — respond with queued status. Client
+        // UI should treat this as searching and wait for a subsequent
+        // 'match_found' broadcast when another player becomes available.
+        printf("[Handler] No opponent currently for user_id=%d — player queued\n", user_id);
+        send_response(server, client, msg->seq, true, "Queued for match", "{\"status\":\"queued\"}");
         return;
     }
 
     // Create match
+    // Before creating a match ensure both users are currently connected.
+    if (!is_user_connected(server, user_id)) {
+        printf("[Handler] Aborting match: requester user_id=%d not connected\n", user_id);
+        send_response(server, client, msg->seq, false, "You are not connected", NULL);
+        return;
+    }
+    if (!is_user_connected(server, opponent_id)) {
+        // Opponent disconnected between queue and match - keep requester queued.
+        printf("[Handler] Opponent %d not connected; keeping user %d queued\n", opponent_id, user_id);
+        send_response(server, client, msg->seq, true, "Queued for match", "{\"status\":\"queued\"}");
+        // Remove the disconnected opponent from ready list if present
+        lobby_remove_player(opponent_id);
+        return;
+    }
+
     char* match_id =
         match_create(user_id, opponent_id, rated, 600000);  // 10 min
     if (!match_id) {
@@ -250,27 +345,61 @@ void handle_find_match(server_t* server, client_t* client, message_t* msg) {
     db_get_user_by_id(user_id, user_name, NULL, NULL, NULL, NULL, NULL);
     db_get_user_by_id(opponent_id, opp_name, NULL, NULL, NULL, NULL, NULL);
 
-    // Notify both players
-    char payload[512];
-    snprintf(payload, sizeof(payload),
-             "{\"match_id\":\"%s\",\"red_user\":\"%s\",\"black_user\":\"%s\","
-             "\"your_color\":\"%s\"}",
-             match_id, user_name, opp_name, "red");
-    send_response(server, client, msg->seq, true, "Match found", payload);
+        // Notify both players
+        char payload_a[512];
+        char payload_b[512];
 
-    // Notify opponent
-    snprintf(payload, sizeof(payload),
-             "{\"match_id\":\"%s\",\"red_user\":\"%s\",\"black_user\":\"%s\","
-             "\"your_color\":\"%s\"}",
+        // Payload for the requester (user_id) - your_color = red
+        snprintf(payload_a, sizeof(payload_a),
+             "{\"match_id\":\"%s\",\"red_user\":\"%s\",\"black_user\":\"%s\",\"your_color\":\"%s\"}",
+             match_id, user_name, opp_name, "red");
+
+        // Payload for the opponent - your_color = black
+        snprintf(payload_b, sizeof(payload_b),
+             "{\"match_id\":\"%s\",\"red_user\":\"%s\",\"black_user\":\"%s\",\"your_color\":\"%s\"}",
              match_id, user_name, opp_name, "black");
 
-    char notify_msg[1024];
-    snprintf(notify_msg, sizeof(notify_msg),
-             "{\"type\":\"match_found\",\"payload\":%s}\n", payload);
-    send_to_user(server, opponent_id, notify_msg);
+        // Build match_found messages
+        char notify_a[1024];
+        char notify_b[1024];
+        snprintf(notify_a, sizeof(notify_a), "{\"type\":\"match_found\",\"payload\":%s}\n", payload_a);
+        snprintf(notify_b, sizeof(notify_b), "{\"type\":\"match_found\",\"payload\":%s}\n", payload_b);
 
-    free(match_id);
-    printf("[Handler] Match created: %s vs %s\n", user_name, opp_name);
+        // Send match_found to both players
+        bool sent_a = send_to_user(server, user_id, notify_a);
+        bool sent_b = send_to_user(server, opponent_id, notify_b);
+
+        // If sending failed for either side, rollback the match and requeue any still-connected player
+        if (!sent_a || !sent_b) {
+            printf("[Handler] Warning: match notify failed (sent_a=%d, sent_b=%d). Rolling back match %s\n", sent_a, sent_b, match_id);
+            // Mark match as ended/aborted
+            match_end(match_id, "aborted", "notify_failed");
+
+            // Requeue connected players (so they remain in ready list)
+            int rating_a = 0, rating_b = 0;
+            db_get_user_by_id(user_id, NULL, NULL, &rating_a, NULL, NULL, NULL);
+            db_get_user_by_id(opponent_id, NULL, NULL, &rating_b, NULL, NULL, NULL);
+
+            if (is_user_connected(server, user_id)) {
+                lobby_set_ready(user_id, user_name, rating_a, true);
+            }
+            if (is_user_connected(server, opponent_id)) {
+                lobby_set_ready(opponent_id, opp_name, rating_b, true);
+            }
+
+            // Inform requester that they're queued again
+            send_response(server, client, msg->seq, true, "Queued for match", "{\"status\":\"queued\"}");
+
+            free(match_id);
+            return;
+        }
+
+        // Also respond to the requester for the original request seq (backwards compatibility)
+        send_response(server, client, msg->seq, true, "Match found", payload_a);
+
+        free(match_id);
+        printf("[Handler] Match created: %s vs %s (sent to user %d: %d, opponent %d: %d)\n",
+             user_name, opp_name, user_id, sent_a, opponent_id, sent_b);
 }
 
 // Handler: Move
@@ -281,6 +410,12 @@ void handle_move(server_t* server, client_t* client, message_t* msg) {
         send_response(server, client, msg->seq, false, "Invalid token", NULL);
         return;
     }
+    client->user_id = user_id;
+    client->authenticated = true;
+    client->user_id = user_id;
+    client->authenticated = true;
+    client->user_id = user_id;
+    client->authenticated = true;
 
     // Parse payload
     const char* match_id = json_get_string(msg->payload_json, "match_id");
@@ -353,6 +488,8 @@ void handle_resign(server_t* server, client_t* client, message_t* msg) {
         send_response(server, client, msg->seq, false, "Invalid token", NULL);
         return;
     }
+    client->user_id = user_id;
+    client->authenticated = true;
 
     // Get match_id
     const char* match_id = json_get_string(msg->payload_json, "match_id");
@@ -423,6 +560,8 @@ void handle_draw_offer(server_t* server, client_t* client, message_t* msg) {
         send_response(server, client, msg->seq, false, "Invalid token", NULL);
         return;
     }
+    client->user_id = user_id;
+    client->authenticated = true;
 
     const char* match_id = json_get_string(msg->payload_json, "match_id");
     if (!match_id) {
@@ -456,6 +595,8 @@ void handle_draw_response(server_t* server, client_t* client, message_t* msg) {
         send_response(server, client, msg->seq, false, "Invalid token", NULL);
         return;
     }
+    client->user_id = user_id;
+    client->authenticated = true;
 
     const char* match_id = json_get_string(msg->payload_json, "match_id");
     bool accept = json_get_bool(msg->payload_json, "accept");
@@ -492,6 +633,8 @@ void handle_challenge(server_t* server, client_t* client, message_t* msg) {
         send_response(server, client, msg->seq, false, "Invalid token", NULL);
         return;
     }
+    client->user_id = user_id;
+    client->authenticated = true;
 
     int opponent_id = json_get_int(msg->payload_json, "opponent_id");
     bool rated = json_get_bool(msg->payload_json, "rated");

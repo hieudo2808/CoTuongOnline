@@ -23,6 +23,7 @@ wss.on('connection', (ws, req) => {
 
     // Create TCP connection to C server
     const tcpClient = new net.Socket();
+    let tcpBuffer = ''; // Buffer to accumulate partial TCP messages
     
     tcpClient.connect(TCP_PORT, TCP_HOST, () => {
         console.log(`[TCP] Connected to C server`);
@@ -40,12 +41,28 @@ wss.on('connection', (ws, req) => {
     });
 
     // Forward TCP messages to WebSocket
+    // Important: TCP may deliver multiple JSON messages in one 'data' event
+    // We need to split by newline and send each message separately
     tcpClient.on('data', (data) => {
         try {
-            const response = data.toString();
-            console.log(`[TCP→WS] ${response.substring(0, 100)}...`);
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.send(response);
+            // Append new data to buffer
+            tcpBuffer += data.toString();
+            
+            // Split by newline and process complete messages
+            const lines = tcpBuffer.split('\n');
+            
+            // Keep the last incomplete line in buffer
+            tcpBuffer = lines[lines.length - 1];
+            
+            // Send all complete messages
+            for (let i = 0; i < lines.length - 1; i++) {
+                const message = lines[i].trim();
+                if (message.length > 0) {
+                    console.log(`[TCP→WS] ${message.substring(0, 100)}...`);
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(message);
+                    }
+                }
             }
         } catch (error) {
             console.error('[TCP→WS] Error:', error);

@@ -498,8 +498,11 @@
                     
                     // Re-authenticate with stored token
                     if (userData.token) {
-                        // Set token for authenticated requests
-                        gameController.network.token = userData.token;
+                        // Set token for authenticated requests (ensure both controller and bridge have it)
+                        gameController.token = userData.token;
+                        if (gameController.network) {
+                            gameController.network.sessionToken = userData.token;
+                        }
                     }
                     
                     window.gameController = gameController;
@@ -518,6 +521,27 @@
             
             // Make gameController available to rest of script
             window.gameController = gameController;
+
+            // Ensure UI reacts when a match is found by the NetworkGameController
+            // This covers both cases: match found as a response to `findMatch()`
+            // or an unsolicited `match_found` event later.
+            gameController.onMatchFound = (payload) => {
+                try {
+                    // Normalize payload
+                    let data = payload;
+                    if (typeof data === 'string') {
+                        try { data = JSON.parse(data); } catch (e) {}
+                    }
+                    handleMatchFound(data || {});
+
+                    // Auto-join game page after a short delay so UI can show feedback
+                    setTimeout(() => {
+                        window.location.href = 'game.html';
+                    }, 400);
+                } catch (e) {
+                    console.error('onMatchFound handler failed:', e);
+                }
+            };
 
         // Menu actions
         document.querySelectorAll('.menu-btn').forEach(btn => {
@@ -557,21 +581,52 @@
         document.getElementById('btn-find-match').addEventListener('click', async () => {
             const searchingDiv = document.getElementById('searching-indicator');
             const btnFind = document.getElementById('btn-find-match');
-            
+
             btnFind.disabled = true;
             searchingDiv.classList.add('active');
-            
+
             try {
-                if (gameController && gameController.network) {
-                    const response = await gameController.findMatch();
-                    
-                    if (response.status === 'searching') {
-                        showMessage('info', '🔍 Đang tìm đối thủ...');
-                    } else if (response.status === 'matched') {
-                        handleMatchFound(response);
-                    }
-                } else {
+                if (!gameController || !gameController.network) {
                     throw new Error('Chưa kết nối server');
+                }
+
+                // Mark player as ready so lobby can match them later
+                try {
+                    await gameController.setReady(true);
+                } catch (e) {
+                    // Non-fatal: continue to attempt findMatch
+                    console.warn('setReady failed:', e.message || e);
+                }
+
+                // Attempt to find an opponent immediately
+                try {
+                    const response = await gameController.findMatch();
+
+                    // If server returns matched payload, handle it
+                    if (response && response.payload) {
+                        // Try to normalize payload (could be string or object)
+                        let payload = response.payload;
+                        if (typeof payload === 'string') {
+                            try { payload = JSON.parse(payload); } catch (e) {}
+                        }
+
+                        // If payload contains match info, handle it
+                        if (payload && (payload.match_id || payload.matchId)) {
+                            handleMatchFound(payload);
+                            return;
+                        }
+                    }
+
+                    // If no immediate match, show searching message and wait for server 'match_found' event
+                    showMessage('info', '🔍 Đang tìm đối thủ...');
+                } catch (err) {
+                    // If server explicitly says no opponent found, treat as searching (not fatal)
+                    if (err && err.message && err.message.toLowerCase().includes('no opponent')) {
+                        showMessage('info', '🔍 Đang tìm đối thủ...');
+                        // keep UI in searching state; server should notify with 'match_found' when available
+                    } else {
+                        throw err;
+                    }
                 }
             } catch (error) {
                 showMessage('error', `❌ Lỗi: ${error.message}`);
@@ -581,10 +636,19 @@
         });
 
         // Cancel search button
-        document.getElementById('btn-cancel-search').addEventListener('click', () => {
+        document.getElementById('btn-cancel-search').addEventListener('click', async () => {
             document.getElementById('searching-indicator').classList.remove('active');
             document.getElementById('btn-find-match').disabled = false;
             showMessage('info', 'Đã hủy tìm kiếm');
+
+            // Unset ready state on server
+            try {
+                if (gameController && gameController.network) {
+                    await gameController.setReady(false);
+                }
+            } catch (e) {
+                console.warn('Failed to unset ready:', e.message || e);
+            }
         });
 
         // Handle match found

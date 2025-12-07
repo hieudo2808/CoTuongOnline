@@ -18,6 +18,9 @@ bool send_to_user(server_t* server, int user_id, const char* message);
 // Send to specific client (by fd)
 bool send_to_client(server_t* server, int client_fd, const char* message);
 
+// Check if a user is currently connected (has a client mapping)
+bool is_user_connected(server_t* server, int user_id);
+
 // Broadcast to all connected clients
 void broadcast_to_all(server_t* server, const char* message);
 

@@ -492,6 +492,50 @@
         const gameController = new NetworkGameController('xiangqi-board');
         window.gameController = gameController;
 
+        // Reconnect to server if needed and restore match state
+        (async () => {
+            try {
+                const serverInfoStr = localStorage.getItem('xiangqi_server');
+                if (!serverInfoStr) {
+                    console.warn('No server info found, redirecting to lobby');
+                    setTimeout(() => window.location.href = 'lobby.html', 800);
+                    return;
+                }
+
+                const serverInfo = JSON.parse(serverInfoStr);
+                const connected = await gameController.connectToServer(serverInfo.host, serverInfo.port);
+                if (!connected) {
+                    console.error('Failed to connect to server');
+                    setTimeout(() => window.location.href = 'lobby.html', 800);
+                    return;
+                }
+
+                // Restore token if present
+                const userDataStr = localStorage.getItem('xiangqi_user');
+                if (userDataStr) {
+                    try {
+                        const user = JSON.parse(userDataStr);
+                        if (user.token) {
+                            gameController.token = user.token;
+                            if (gameController.network) gameController.network.sessionToken = user.token;
+                        }
+                    } catch (e) { /* ignore parse errors */ }
+                }
+
+                // If match data exists (carried over from lobby), initialize local match state
+                if (matchData) {
+                    try {
+                        gameController.handleMatchFound(matchData);
+                    } catch (e) {
+                        console.error('Failed to initialize match state:', e);
+                    }
+                }
+            } catch (e) {
+                console.error('Reconnect/setup failed:', e);
+                setTimeout(() => window.location.href = 'lobby.html', 800);
+            }
+        })();
+
         // Display player info
         document.getElementById('player-name').textContent = userData.username;
         document.getElementById('player-rating').textContent = `⭐ ${userData.rating || 1500}`;
