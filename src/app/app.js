@@ -4,7 +4,7 @@
  */
 
 import NetworkGameController from "../core/networkGameController.js";
-import GameController from "../core/gameController.js";
+import { GameController } from "../core/gameController.js";
 import {
     Validators,
     sanitizeHTML,
@@ -240,8 +240,13 @@ class XiangqiApp {
         this.showStatus("connection-status", "Đang kết nối...", "info");
 
         try {
-            // Create game controller with network
-            this.gameController = new NetworkGameController("xiangqi-board");
+            // Store connection info for later use
+            this.serverHost = host;
+            this.serverPort = port;
+            
+            // Create game controller WITHOUT board (lazy initialization)
+            // Pass null to skip UI creation until we enter game screen
+            this.gameController = new NetworkGameController(null);
 
             // Setup callbacks
             this.setupGameCallbacks();
@@ -596,17 +601,25 @@ class XiangqiApp {
     }
 
     handlePractice() {
-        // Show offline game
+        // Show offline game screen first
         this.showScreen("screen-game");
 
-        // Create offline game controller
-        if (!this.gameController) {
-            this.gameController = new GameController("xiangqi-board");
-        }
-
         // Hide network controls
-        document.getElementById("btn-resign").style.display = "none";
-        document.getElementById("btn-draw-offer").style.display = "none";
+        const resignBtn = document.getElementById("btn-resign");
+        const drawBtn = document.getElementById("btn-draw-offer");
+        if (resignBtn) resignBtn.style.display = "none";
+        if (drawBtn) drawBtn.style.display = "none";
+
+        // Create offline game controller after screen is visible
+        setTimeout(() => {
+            const needsInit = !this.gameController || 
+                !this.gameController.ui || 
+                !this.gameController.ui.isInitialized;
+            
+            if (needsInit) {
+                this.gameController = new GameController("xiangqi-board");
+            }
+        }, 50);
 
         alert("Chế độ luyện tập offline");
     }
@@ -664,6 +677,18 @@ class XiangqiApp {
     // ===== GAME =====
     showGameScreen(matchData) {
         this.showScreen("screen-game");
+        
+        // Initialize board UI now that screen is visible
+        // Check if UI exists and is initialized
+        const needsInitUI = this.gameController && 
+            (!this.gameController.ui || !this.gameController.ui.isInitialized);
+        
+        if (needsInitUI) {
+            // Use setTimeout to ensure DOM is fully rendered
+            setTimeout(() => {
+                this.gameController.initUI("xiangqi-board");
+            }, 50);
+        }
 
         // Update player info
         document.getElementById("opponent-name").textContent =
@@ -889,10 +914,16 @@ class XiangqiApp {
     showReplay(matchData) {
         this.showScreen("screen-replay");
 
-        // TODO: Setup replay controller
-        if (!this.replayController) {
-            this.replayController = new GameController("replay-board");
-        }
+        // Setup replay controller after screen is visible
+        setTimeout(() => {
+            const needsInit = !this.replayController || 
+                !this.replayController.ui || 
+                !this.replayController.ui.isInitialized;
+            
+            if (needsInit) {
+                this.replayController = new GameController("replay-board");
+            }
+        }, 50);
 
         // Load match data
         document.getElementById(

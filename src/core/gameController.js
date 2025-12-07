@@ -6,23 +6,85 @@ import { UI } from "../ui/renderer.js";
 import { MoveNotation } from "../utils/moveNotation.js";
 
 export class GameController {
-    constructor(initialPosition) {
+    constructor(initialPositionOrContainerId, initialPosition = null) {
         this.chessboard = new Board();
-        this.initialPosition = initialPosition;
+        this.eventListeners = new Map(); // Simple event system
         this.stack = []; // Move history
-        this.ui = new UI();
+        this.ui = null;
+        
+        // Handle both legacy and modern constructor signatures
+        // Legacy: new GameController(initialPosition)
+        // Modern: new GameController(containerId, initialPosition) or new GameController(containerId)
+        // Lazy: new GameController(null) - no UI, just board logic
+        let boardContainerId = null;
+        
+        if (typeof initialPositionOrContainerId === 'string') {
+            // Modern mode: first arg is container ID
+            boardContainerId = initialPositionOrContainerId;
+            this.initialPosition = initialPosition;
+        } else if (Array.isArray(initialPositionOrContainerId)) {
+            // Legacy mode: first arg is initial position (array)
+            this.initialPosition = initialPositionOrContainerId;
+        } else {
+            // Null or undefined - lazy mode, no UI yet
+            this.initialPosition = initialPosition;
+        }
+        
+        // Store for later initialization
+        this.boardContainerId = boardContainerId;
 
         // Bind methods to this context
         this.boundChoosePiece = (e) => this.choosePiece(e);
         this.boundCancelPiece = (e) => this.cancelPiece(e);
 
-        // Initialize board
-        this.chessboard.initBoard(initialPosition);
-        this.ui.renderBoard(this.chessboard.board);
-
-        // Bind event handlers
-        this.bindEvents();
-        this.initListeners();
+        // Initialize board data
+        this.chessboard.initBoard(this.initialPosition);
+        
+        // Only initialize UI if container ID is provided and exists
+        if (boardContainerId) {
+            try {
+                this.ui = new UI(boardContainerId);
+                this.ui.renderBoard(this.chessboard.board);
+                this.bindEvents();
+                this.initListeners();
+            } catch (error) {
+                console.error("[GameController] Failed to initialize UI:", error.message);
+                // Continue without UI - can be initialized later
+                this.ui = null;
+            }
+        }
+    }
+    
+    /**
+     * Initialize or reinitialize UI with a container
+     */
+    initUI(boardContainerId) {
+        // Check if UI is already properly initialized
+        if (this.ui && this.ui.isInitialized) {
+            console.log("[GameController] UI already initialized");
+            return true;
+        }
+        
+        try {
+            this.boardContainerId = boardContainerId;
+            
+            // If UI exists but not initialized (lazy mode), use initialize()
+            if (this.ui && !this.ui.isInitialized) {
+                this.ui.initialize(boardContainerId);
+            } else {
+                // Create new UI instance
+                this.ui = new UI(boardContainerId);
+            }
+            
+            this.ui.renderBoard(this.chessboard.board);
+            this.bindEvents();
+            this.initListeners();
+            console.log("[GameController] UI initialized successfully");
+            return true;
+        } catch (error) {
+            console.error("[GameController] Failed to initialize UI:", error.message);
+            return false;
+        }
     }
 
     /**
@@ -57,20 +119,32 @@ export class GameController {
     }
 
     bindEvents() {
-        // Button events
-        this.ui.buttons.newGame.addEventListener("click", () =>
-            this.handleNewGame()
-        );
-        this.ui.buttons.resign.addEventListener("click", () =>
-            this.handleResign()
-        );
-        this.ui.buttons.draw.addEventListener("click", () => this.handleDraw());
+        // Button events - check if buttons exist before binding
+        if (this.ui.buttons.newGame) {
+            this.ui.buttons.newGame.addEventListener("click", () =>
+                this.handleNewGame()
+            );
+        }
+        if (this.ui.buttons.resign) {
+            this.ui.buttons.resign.addEventListener("click", () =>
+                this.handleResign()
+            );
+        }
+        if (this.ui.buttons.draw) {
+            this.ui.buttons.draw.addEventListener("click", () => this.handleDraw());
+        }
 
-        // Board click events
-        const cells = document.querySelectorAll("#chessboardContainer td");
-        cells.forEach((cell) => {
-            cell.addEventListener("click", (e) => this.handleBoardClick(e));
-        });
+        // Board click events - wait a tick for DOM to be ready
+        setTimeout(() => {
+            const cells = document.querySelectorAll("#chessboardContainer td");
+            if (cells && cells.length > 0) {
+                cells.forEach((cell) => {
+                    cell.addEventListener("click", (e) => this.handleBoardClick(e));
+                });
+            } else {
+                console.warn("[GameController] No chess cells found to bind events");
+            }
+        }, 0);
     }
 
     handleNewGame() {
@@ -114,6 +188,14 @@ export class GameController {
         const curRow = this.chessboard.curPiece.row;
         const curCol = this.chessboard.curPiece.col;
 
+        // Store move info for event
+        const moveInfo = {
+            from: { row: curRow, col: curCol },
+            to: { row: newRow, col: newCol },
+            piece: this.chessboard.curPiece,
+            color: this.chessboard.turn
+        };
+
         // Update board state
         this.chessboard.board[curRow][curCol] = null;
         this.chessboard.board[newRow][newCol] = this.chessboard.curPiece;
@@ -131,6 +213,7 @@ export class GameController {
         source.removeChild(clickedPiece);
         if (targetPiece) {
             target.removeChild(targetPiece);
+            moveInfo.captured = true;
         }
         target.appendChild(clickedPiece);
         clickedPiece.style.backgroundColor = "#FAF0E6";
@@ -158,11 +241,18 @@ export class GameController {
 
         // Update event listeners
         this.initListeners();
+
+        // Emit move-made event
+        this.emit('move-made', moveInfo);
+        
+        return true;
     }
 
     switchTurn() {
         this.chessboard.turn = this.chessboard.turn === "red" ? "black" : "red";
-        this.ui.updateTurn(this.chessboard.turn);
+        if (this.ui && this.ui.updateTurn) {
+            this.ui.updateTurn(this.chessboard.turn);
+        }
     }
 
     checkGameStatus() {
@@ -171,6 +261,9 @@ export class GameController {
             "black",
             this.chessboard.board
         );
+
+        // Skip UI updates if no UI
+        if (!this.ui) return;
 
         if (checkRed || checkBlack) {
             this.ui.updateCheckStatus("Check!");
@@ -201,6 +294,11 @@ export class GameController {
             targetPiece
         );
         this.stack.push(record);
+
+        // Skip DOM updates if table doesn't exist (e.g., in network game mode)
+        if (!moveTable) {
+            return;
+        }
 
         if (this.chessboard.turn === "red") {
             this.chessboard.turnCnt++;
@@ -322,5 +420,107 @@ export class GameController {
                 );
             }
         }
+    }
+
+    // ========== Event System ==========
+    
+    /**
+     * Register event listener
+     */
+    on(event, callback) {
+        if (!this.eventListeners.has(event)) {
+            this.eventListeners.set(event, []);
+        }
+        this.eventListeners.get(event).push(callback);
+    }
+
+    /**
+     * Remove event listener
+     */
+    off(event, callback) {
+        if (!this.eventListeners.has(event)) return;
+        const listeners = this.eventListeners.get(event);
+        const index = listeners.indexOf(callback);
+        if (index > -1) {
+            listeners.splice(index, 1);
+        }
+    }
+
+    /**
+     * Emit event to all listeners
+     */
+    emit(event, ...args) {
+        if (!this.eventListeners.has(event)) return;
+        this.eventListeners.get(event).forEach(callback => {
+            try {
+                callback(...args);
+            } catch (e) {
+                console.error(`Error in event handler for ${event}:`, e);
+            }
+        });
+    }
+
+    // ========== Board Setup ==========
+
+    /**
+     * Setup board for a new game (alias for reset with UI initialization)
+     */
+    setupBoard(options = {}) {
+        const { flipped = false } = options;
+        this.isFlipped = flipped;
+        
+        // Reset game state
+        this.reset();
+        
+        // Apply flip if needed
+        if (flipped && this.ui) {
+            this.flipBoard();
+        }
+        
+        return true;
+    }
+
+    /**
+     * Flip the board view (for black player)
+     */
+    flipBoard() {
+        this.isFlipped = !this.isFlipped;
+        const container = document.getElementById(this.boardContainerId);
+        if (container) {
+            if (this.isFlipped) {
+                container.classList.add('flipped');
+            } else {
+                container.classList.remove('flipped');
+            }
+        }
+    }
+
+    // ========== Move Validation ==========
+
+    /**
+     * Validate if a move is legal
+     */
+    validateMove(from, to) {
+        if (!this.chessboard || !this.chessboard.board) {
+            return false;
+        }
+
+        const piece = this.chessboard.board[from.row][from.col];
+        if (!piece) {
+            return false;
+        }
+
+        // Check if it's the right turn
+        if (piece.color !== this.chessboard.turn) {
+            return false;
+        }
+
+        // Use piece's canMove method if available
+        if (typeof piece.canMove === 'function') {
+            return piece.canMove(to.row, to.col, this.chessboard.board);
+        }
+
+        // Fallback: allow all moves (validation in movePiece)
+        return true;
     }
 }

@@ -8,10 +8,27 @@ import { OPENING_POSITION, parsePosition } from "./config.js";
 import NetworkBridge from "../network/websocketBridge.js";
 
 class NetworkGameController extends GameController {
-    constructor(config = {}) {
+    constructor(boardContainerIdOrConfig = null) {
+        // Handle both string (container ID) and object (config) arguments
+        let boardContainerId = null;
+        let config = {};
+        
+        if (typeof boardContainerIdOrConfig === 'string') {
+            // Modern mode: first arg is container ID
+            boardContainerId = boardContainerIdOrConfig;
+        } else if (boardContainerIdOrConfig && typeof boardContainerIdOrConfig === 'object') {
+            // Legacy mode: first arg is config object
+            config = boardContainerIdOrConfig;
+            boardContainerId = config.boardContainerId || null;
+        }
+        // If null, will be initialized later via initBoard()
+        
         // Use opening position if not provided
         const initialPosition = config.initialPosition || parsePosition(OPENING_POSITION);
-        super(initialPosition);
+        
+        // Call parent constructor with container ID and initial position
+        // If boardContainerId is null, parent will skip UI initialization
+        super(boardContainerId, initialPosition);
 
         // Network properties
         this.network = null;
@@ -21,6 +38,7 @@ class NetworkGameController extends GameController {
         this.myColor = null; // 'red' or 'black'
         this.isOnlineMode = false;
         this.isMyTurn = false;
+        this.pendingBoardContainerId = boardContainerId;
 
         // Callbacks
         this.onMatchFound = null;
@@ -28,6 +46,22 @@ class NetworkGameController extends GameController {
         this.onGameEnd = null;
         this.onConnectionError = null;
         this.onChatMessage = null;
+    }
+    
+    /**
+     * Initialize board UI (can be called later if not done in constructor)
+     */
+    initBoardUI(boardContainerId) {
+        if (this.ui && !this.ui.isLegacyMode) {
+            console.log("[NetworkGame] Board already initialized");
+            return;
+        }
+        
+        const { UI } = require("../ui/renderer.js");
+        this.ui = new UI(boardContainerId);
+        this.ui.renderBoard(this.chessboard.board);
+        this.bindEvents();
+        this.initListeners();
     }
 
     // Initialize network connection
@@ -155,6 +189,24 @@ class NetworkGameController extends GameController {
         }
     }
 
+    // Join/rejoin a match (used when reconnecting to game.html)
+    // This sends a message to server so it associates this connection with user_id
+    async joinMatch(matchId) {
+        try {
+            // Send a simple request with token to let server know who we are
+            const response = await this.network.sendAndWait(
+                "join_match",
+                { match_id: matchId }
+            );
+            console.log("[NetworkGame] Joined match:", response);
+            return response;
+        } catch (error) {
+            console.warn("[NetworkGame] Join match failed (may not be implemented on server):", error);
+            // Not critical - server will associate user_id on next move
+            return null;
+        }
+    }
+
     // Find match
     async findMatch(mode = "random") {
         try {
@@ -184,8 +236,8 @@ class NetworkGameController extends GameController {
             `[NetworkGame] Match started: ${this.matchId}, playing as ${this.myColor}`
         );
 
-        // Reset board
-        this.reset();
+        // Setup board with flip for black player
+        this.setupBoard({ flipped: this.myColor === "black" });
 
         // Callback
         if (this.onMatchFound) {
@@ -194,7 +246,26 @@ class NetworkGameController extends GameController {
     }
 
     // Override executeMove to send to server
-    async executeMove(from, to) {
+    // Handles both (newRow, newCol) from parent click handler and (from, to) objects
+    async executeMove(newRowOrFrom, newColOrTo) {
+        let from, to;
+        
+        // Check if called with objects or numbers
+        if (typeof newRowOrFrom === 'object' && newRowOrFrom !== null) {
+            // Called with (from, to) objects
+            from = newRowOrFrom;
+            to = newColOrTo;
+        } else {
+            // Called with (newRow, newCol) from handleBoardClick
+            // In this case, curPiece contains the source position
+            if (!this.chessboard.curPiece) {
+                console.warn("[NetworkGame] No piece selected");
+                return false;
+            }
+            from = { row: this.chessboard.curPiece.row, col: this.chessboard.curPiece.col };
+            to = { row: newRowOrFrom, col: newColOrTo };
+        }
+
         // In online mode, only allow moves if it's our turn
         if (this.isOnlineMode && !this.isMyTurn) {
             console.warn("[NetworkGame] Not your turn!");
@@ -219,8 +290,8 @@ class NetworkGameController extends GameController {
                     to.col
                 );
 
-                // Execute move locally (optimistic update)
-                const result = super.executeMove(from, to);
+                // Execute move locally using parent's method (pass row, col numbers)
+                const result = super.executeMove(to.row, to.col);
 
                 if (result) {
                     this.isMyTurn = false; // Wait for opponent
@@ -229,21 +300,57 @@ class NetworkGameController extends GameController {
                 return result;
             } catch (error) {
                 console.error("[NetworkGame] Failed to send move:", error);
+                // If "Not your turn" error, sync turn state
+                if (error.message && error.message.includes("Not your turn")) {
+                    console.log("[NetworkGame] Syncing turn state: not my turn");
+                    this.isMyTurn = false;
+                }
                 return false;
             }
         } else {
-            // Local mode - just execute
-            return super.executeMove(from, to);
+            // Local mode - just execute using parent's method
+            return super.executeMove(to.row, to.col);
         }
     }
 
     // Handle opponent move
     handleOpponentMove(payload) {
-        const from = { row: payload.from.row, col: payload.from.col };
-        const to = { row: payload.to.row, col: payload.to.col };
+        console.log("[NetworkGame] Processing opponent move:", payload);
+        
+        // Handle different payload formats
+        let fromRow, fromCol, toRow, toCol;
+        if (payload.from && typeof payload.from === 'object') {
+            fromRow = payload.from.row;
+            fromCol = payload.from.col;
+            toRow = payload.to.row;
+            toCol = payload.to.col;
+        } else {
+            // Flat format
+            fromRow = payload.from_row;
+            fromCol = payload.from_col;
+            toRow = payload.to_row;
+            toCol = payload.to_col;
+        }
 
-        // Execute opponent's move
-        super.executeMove(from, to);
+        console.log(`[NetworkGame] Move: (${fromRow},${fromCol}) -> (${toRow},${toCol})`);
+        console.log("[NetworkGame] Current board state:", this.chessboard.board);
+
+        // Set curPiece so parent's executeMove works correctly
+        const piece = this.chessboard.board[fromRow][fromCol];
+        if (piece) {
+            this.chessboard.curPiece = piece;
+            // Temporarily allow opponent's move by setting correct turn
+            const originalTurn = this.chessboard.turn;
+            this.chessboard.turn = piece.color;
+            
+            // Execute opponent's move using parent's method
+            super.executeMove(toRow, toCol);
+            
+            // Turn is switched by executeMove, so no need to restore
+        } else {
+            console.error("[NetworkGame] No piece found at opponent's source position:", fromRow, fromCol);
+            console.error("[NetworkGame] Board at that position:", this.chessboard.board[fromRow]?.[fromCol]);
+        }
 
         // Now it's our turn
         this.isMyTurn = true;

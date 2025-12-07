@@ -525,6 +525,21 @@
                 // If match data exists (carried over from lobby), initialize local match state
                 if (matchData) {
                     try {
+                        // Join match on server to associate connection with user
+                        const joinResult = await gameController.joinMatch(matchData.match_id);
+                        if (joinResult && joinResult.payload) {
+                            // Sync turn state from server
+                            const serverState = typeof joinResult.payload === 'string' 
+                                ? JSON.parse(joinResult.payload) 
+                                : joinResult.payload;
+                            console.log('[Game] Server match state:', serverState);
+                            
+                            // Update isMyTurn based on server state
+                            if (serverState.is_my_turn !== undefined) {
+                                gameController.isMyTurn = serverState.is_my_turn;
+                            }
+                        }
+                        
                         gameController.handleMatchFound(matchData);
                     } catch (e) {
                         console.error('Failed to initialize match state:', e);
@@ -545,17 +560,25 @@
             document.getElementById('opponent-rating').textContent = `⭐ ${matchData.opponent_rating || 1500}`;
         }
 
-        // Setup board
+        // Setup board - check if method exists
         try {
-            gameController.setupBoard();
-            console.log('✅ Board setup complete');
+            if (typeof gameController.setupBoard === 'function') {
+                // Flip board for black player
+                const shouldFlip = matchData && matchData.your_color === 'black';
+                gameController.setupBoard({ flipped: shouldFlip });
+                console.log('✅ Board setup complete' + (shouldFlip ? ' (flipped for black)' : ''));
+            } else {
+                // Fallback: just reset
+                gameController.reset();
+                console.log('✅ Board reset complete');
+            }
         } catch (error) {
             console.error('❌ Board setup error:', error);
         }
 
         // Game state
         let moveCount = 0;
-        let isMyTurn = true; // Will be determined by server
+        let isMyTurn = matchData ? (matchData.your_color === 'red') : true; // Red goes first
         let gameStartTime = Date.now();
         let playerTime = 600; // 10 minutes in seconds
         let opponentTime = 600;
@@ -615,13 +638,15 @@
             }
         }
 
-        // Move made handler
-        gameController.on('move-made', (move) => {
-            moveCount++;
-            addMoveToHistory(moveCount, move);
-            isMyTurn = !isMyTurn;
-            updateTurnIndicator();
-        });
+        // Move made handler - check if on() method exists
+        if (typeof gameController.on === 'function') {
+            gameController.on('move-made', (move) => {
+                moveCount++;
+                addMoveToHistory(moveCount, move);
+                isMyTurn = !isMyTurn;
+                updateTurnIndicator();
+            });
+        }
 
         function addMoveToHistory(num, move) {
             const movesList = document.getElementById('moves-list');

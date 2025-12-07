@@ -463,7 +463,7 @@ void handle_move(server_t* server, client_t* client, message_t* msg) {
     // Success
     send_response(server, client, msg->seq, true, "Move accepted", NULL);
 
-    // Broadcast move to opponent
+    // Send move to opponent only (not to the sender)
     char payload[512];
     snprintf(payload, sizeof(payload),
              "{\"match_id\":\"%s\",\"from\":{\"row\":%d,\"col\":%d},\"to\":{"
@@ -474,7 +474,9 @@ void handle_move(server_t* server, client_t* client, message_t* msg) {
     snprintf(broadcast_msg, sizeof(broadcast_msg),
              "{\"type\":\"opponent_move\",\"payload\":%s}\n", payload);
 
-    broadcast_to_match(server, match_id, broadcast_msg);
+    // Get opponent user_id
+    int opponent_id = (match->red_user_id == user_id) ? match->black_user_id : match->red_user_id;
+    send_to_user(server, opponent_id, broadcast_msg);
 
     printf("[Handler] Move: %s (%d,%d)->(%d,%d)\n", match_id, from_row,
            from_col, to_row, to_col);
@@ -771,6 +773,56 @@ void handle_leaderboard(server_t* server, client_t* client, message_t* msg) {
     send_response(server, client, msg->seq, true, "Leaderboard", leaderboard_json);
 }
 
+// Handler: Join Match (used when reconnecting to associate connection with user)
+void handle_join_match(server_t* server, client_t* client, message_t* msg) {
+    // Validate token
+    int user_id;
+    if (!validate_token_and_get_user(msg->token, &user_id)) {
+        send_response(server, client, msg->seq, false, "Invalid token", NULL);
+        return;
+    }
+
+    // Associate this connection with user
+    client->user_id = user_id;
+    client->authenticated = true;
+
+    const char* match_id = json_get_string(msg->payload_json, "match_id");
+    if (!match_id) {
+        send_response(server, client, msg->seq, false, "Missing match_id", NULL);
+        return;
+    }
+
+    // Get match
+    match_t* match = match_find_by_id(match_id);
+    if (!match || !match->active) {
+        send_response(server, client, msg->seq, false, "Match not found or ended", NULL);
+        return;
+    }
+
+    // Check if user is part of this match
+    if (match->red_user_id != user_id && match->black_user_id != user_id) {
+        send_response(server, client, msg->seq, false, "Not a player in this match", NULL);
+        return;
+    }
+
+    // Determine whose turn it is
+    bool is_red_turn = (match->move_count % 2 == 0);
+    const char* current_turn = is_red_turn ? "red" : "black";
+    bool is_my_turn = (is_red_turn && match->red_user_id == user_id) ||
+                      (!is_red_turn && match->black_user_id == user_id);
+
+    // Return match state
+    char payload[512];
+    snprintf(payload, sizeof(payload),
+             "{\"match_id\":\"%s\",\"move_count\":%d,\"current_turn\":\"%s\",\"is_my_turn\":%s}",
+             match_id, match->move_count, current_turn, is_my_turn ? "true" : "false");
+
+    send_response(server, client, msg->seq, true, "Joined match", payload);
+
+    printf("[Handler] User %d joined match %s (move_count=%d, is_my_turn=%d)\n",
+           user_id, match_id, match->move_count, is_my_turn);
+}
+
 // Handler: Heartbeat
 void handle_heartbeat(server_t* server, client_t* client, message_t* msg) {
     send_response(server, client, msg->seq, true, "pong", NULL);
@@ -888,6 +940,8 @@ void dispatch_handler(server_t* server, client_t* client, message_t* msg) {
         handle_challenge_response(server, client, msg);
     } else if (strcmp(msg->type, "get_match") == 0) {
         handle_get_match(server, client, msg);
+    } else if (strcmp(msg->type, "join_match") == 0) {
+        handle_join_match(server, client, msg);
     } else if (strcmp(msg->type, "leaderboard") == 0) {
         handle_leaderboard(server, client, msg);
     } else if (strcmp(msg->type, "heartbeat") == 0) {
