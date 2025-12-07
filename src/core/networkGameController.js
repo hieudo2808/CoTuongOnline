@@ -314,51 +314,52 @@ class NetworkGameController extends GameController {
     }
 
     // Handle opponent move
+    // Thay thế method handleOpponentMove trong src/core/networkGameController.js
+
     handleOpponentMove(payload) {
-        console.log("[NetworkGame] Processing opponent move:", payload);
+        console.log("[NetworkGame] Recv Move:", payload);
         
-        // Handle different payload formats
+        // 1. Parse dữ liệu phẳng từ server (C server gửi from_row, to_row...)
         let fromRow, fromCol, toRow, toCol;
+        
+        // Xử lý cả 2 trường hợp payload (object lồng hoặc phẳng)
         if (payload.from && typeof payload.from === 'object') {
             fromRow = payload.from.row;
             fromCol = payload.from.col;
             toRow = payload.to.row;
             toCol = payload.to.col;
         } else {
-            // Flat format
-            fromRow = payload.from_row;
-            fromCol = payload.from_col;
-            toRow = payload.to_row;
-            toCol = payload.to_col;
+            // Trường hợp Server C gửi
+            fromRow = parseInt(payload.from_row);
+            fromCol = parseInt(payload.from_col);
+            toRow = parseInt(payload.to_row);
+            toCol = parseInt(payload.to_col);
         }
 
-        console.log(`[NetworkGame] Move: (${fromRow},${fromCol}) -> (${toRow},${toCol})`);
-        console.log("[NetworkGame] Current board state:", this.chessboard.board);
-
-        // Set curPiece so parent's executeMove works correctly
+        // 2. Kiểm tra quân cờ tại vị trí nguồn
         const piece = this.chessboard.board[fromRow][fromCol];
-        if (piece) {
-            this.chessboard.curPiece = piece;
-            // Temporarily allow opponent's move by setting correct turn
-            const originalTurn = this.chessboard.turn;
-            this.chessboard.turn = piece.color;
-            
-            // Execute opponent's move using parent's method
-            super.executeMove(toRow, toCol);
-            
-            // Turn is switched by executeMove, so no need to restore
-        } else {
-            console.error("[NetworkGame] No piece found at opponent's source position:", fromRow, fromCol);
-            console.error("[NetworkGame] Board at that position:", this.chessboard.board[fromRow]?.[fromCol]);
+        if (!piece) {
+            console.error(`Sync Error: No piece at ${fromRow},${fromCol}`);
+            // Yêu cầu tải lại bàn cờ nếu cần
+            return;
         }
 
-        // Now it's our turn
+        console.log(`Executing Opponent Move: ${piece.type} (${fromRow},${fromCol}) -> (${toRow},${toCol})`);
+
+        // 3. Hack: Set lượt đi tạm thời thành màu của quân cờ đó để cho phép di chuyển
+        // Vì GameController chặn đi nếu không phải lượt
+        const originalTurn = this.chessboard.turn;
+        this.chessboard.turn = piece.color;
+        this.chessboard.curPiece = piece; // Set quân đang chọn
+
+        // 4. Thực hiện nước đi qua logic của GameController (sẽ update UI và Board)
+        super.executeMove(toRow, toCol);
+
+        // 5. Cập nhật trạng thái
+        // Sau khi executeMove, turn đã được switch.
+        // Giờ là lượt của mình
         this.isMyTurn = true;
-
-        // Callback
-        if (this.onOpponentMove) {
-            this.onOpponentMove(payload);
-        }
+        this.ui.updateTurn(this.chessboard.turn); // Update text hiển thị
     }
 
     // Resign
@@ -410,7 +411,8 @@ class NetworkGameController extends GameController {
     // Handle draw offer
     handleDrawOffer(payload) {
         const accept = confirm("Opponent offers a draw. Accept?");
-        this.network.respondToDraw(payload.match_id, accept);
+        // SỬA: respondToDraw -> respondDraw
+        this.network.respondDraw(payload.match_id, accept);
     }
 
     // Handle game end
@@ -488,7 +490,8 @@ class NetworkGameController extends GameController {
                 payload.rated ? "rated" : "casual"
             } game. Accept?`
         );
-        this.network.respondToChallenge(payload.challenge_id, accept);
+        // SỬA: respondToChallenge -> respondChallenge
+        this.network.respondChallenge(payload.challenge_id, accept);
     }
 
     // Handle chat message

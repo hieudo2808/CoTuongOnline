@@ -119,32 +119,48 @@ export class GameController {
     }
 
     bindEvents() {
-        // Button events - check if buttons exist before binding
+        // 1. Gán sự kiện cho các nút bấm (New Game, Resign, Draw)
         if (this.ui.buttons.newGame) {
-            this.ui.buttons.newGame.addEventListener("click", () =>
-                this.handleNewGame()
-            );
+            this.ui.buttons.newGame.addEventListener("click", () => this.handleNewGame());
         }
         if (this.ui.buttons.resign) {
-            this.ui.buttons.resign.addEventListener("click", () =>
-                this.handleResign()
-            );
+            this.ui.buttons.resign.addEventListener("click", () => this.handleResign());
         }
         if (this.ui.buttons.draw) {
             this.ui.buttons.draw.addEventListener("click", () => this.handleDraw());
         }
 
-        // Board click events - wait a tick for DOM to be ready
-        setTimeout(() => {
-            const cells = document.querySelectorAll("#chessboardContainer td");
-            if (cells && cells.length > 0) {
-                cells.forEach((cell) => {
-                    cell.addEventListener("click", (e) => this.handleBoardClick(e));
-                });
-            } else {
-                console.warn("[GameController] No chess cells found to bind events");
-            }
-        }, 0);
+        // 2. Gán sự kiện Click cho Bàn cờ (Sử dụng Event Delegation)
+        const boardContainer = document.getElementById(this.boardContainerId);
+        
+        if (boardContainer) {
+            // Xóa listener cũ (nếu cần thiết, hoặc cloneNode để clear)
+            // Ở đây ta gán trực tiếp, giả định bindEvents chỉ chạy 1 lần khi init
+            boardContainer.addEventListener('click', (e) => {
+                // Tìm element mục tiêu là ô lưới (.piece-spot) hoặc quân cờ (.pieces)
+                // closest() giúp tìm phần tử cha gần nhất khớp selector
+                const target = e.target.closest('.piece-spot') || e.target.closest('.pieces');
+                
+                if (target) {
+                    // Nếu click vào quân cờ (.pieces), ta cần lấy phần tử cha của nó (.piece-spot) 
+                    // để lấy tọa độ data-x, data-y
+                    const spot = target.classList.contains('pieces') ? target.parentElement : target;
+                    
+                    // Kiểm tra xem có đúng là ô cờ có tọa độ không
+                    if (spot && spot.hasAttribute('data-x')) {
+                        // Giả lập một event object để truyền vào hàm cũ handleBoardClick
+                        // sao cho logic cũ vẫn hoạt động mà không cần sửa nhiều
+                        this.handleBoardClick({
+                            target: e.target,       // Element thực sự bị click
+                            currentTarget: spot,    // Element chứa tọa độ (giả lập currentTarget)
+                            stopPropagation: () => e.stopPropagation()
+                        });
+                    }
+                }
+            });
+        } else {
+            console.warn("[GameController] Board container not found to bind events");
+        }
     }
 
     handleNewGame() {
@@ -162,26 +178,58 @@ export class GameController {
     }
 
     handleBoardClick(event) {
+        // Kiểm tra trạng thái game
         if (!this.chessboard.status) {
-            event.stopPropagation();
+            if (event.stopPropagation) event.stopPropagation();
             return;
         }
 
-        if (this.chessboard.curPiece) {
-            const cell = event.currentTarget;
-            const x = parseInt(cell.getAttribute("data-x"));
-            const y = parseInt(cell.getAttribute("data-y"));
+        // Lấy tọa độ từ currentTarget (đã được bindEvents truyền vào là div.piece-spot)
+        const cell = event.currentTarget;
+        const x = parseInt(cell.getAttribute("data-x"));
+        const y = parseInt(cell.getAttribute("data-y"));
 
-            const res = this.chessboard.movePiece(
-                this.chessboard.curPiece,
-                x,
-                y
-            );
+        // Logic chọn quân (Select)
+        if (!this.chessboard.curPiece) {
+            // Nếu chưa chọn quân, tìm quân tại vị trí click để chọn
+            const piece = this.chessboard.board[x][y];
+            if (piece && piece.color === this.chessboard.turn) {
+                this.chessboard.curPiece = piece;
+                this.ui.renderBoard(this.chessboard.board); // Re-render để hiện highlight (nếu có logic highlight)
+                
+                // Highlight thủ công (nếu renderer không tự làm)
+                const pieceDiv = cell.querySelector('.pieces');
+                if (pieceDiv) pieceDiv.classList.add('selected');
+            }
+        } 
+        // Logic đi quân (Move)
+        else {
+            // Đã chọn quân, thực hiện di chuyển
+            // Nếu click lại vào chính quân đó -> Hủy chọn
+            if (this.chessboard.curPiece.row === x && this.chessboard.curPiece.col === y) {
+                this.chessboard.curPiece = null;
+                this.ui.renderBoard(this.chessboard.board); // Bỏ highlight
+                return;
+            }
+
+            // Thử di chuyển
+            const res = this.chessboard.movePiece(this.chessboard.curPiece, x, y);
             if (res) {
-                this.executeMove(x, y);
+                this.executeMove(x, y); // Thực hiện nước đi
+            } else {
+                // Nước đi không hợp lệ
+                // Nếu click vào quân khác cùng màu -> Đổi quân chọn
+                const targetPiece = this.chessboard.board[x][y];
+                if (targetPiece && targetPiece.color === this.chessboard.turn) {
+                    this.chessboard.curPiece = targetPiece;
+                    this.ui.renderBoard(this.chessboard.board);
+                    const pieceDiv = cell.querySelector('.pieces');
+                    if (pieceDiv) pieceDiv.classList.add('selected');
+                }
             }
         }
-        event.stopPropagation();
+        
+        if (event.stopPropagation) event.stopPropagation();
     }
 
     executeMove(newRow, newCol) {

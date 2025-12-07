@@ -188,7 +188,7 @@ export class Board {
         var type = piece.type;
 
         var possiblePos = [];
-        if (type == "cannon" || type == "chariot" || type == "horse") {
+        if (type == "cannon" || type == "chariot") {
             for (let i = 0; i < dir.length; i++) {
                 var len = dir[i].length;
                 for (let j = 0; j < len; j++) {

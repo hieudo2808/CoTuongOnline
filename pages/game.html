@@ -562,18 +562,20 @@
 
         // Setup board - check if method exists
         try {
-            if (typeof gameController.setupBoard === 'function') {
-                // Flip board for black player
-                const shouldFlip = matchData && matchData.your_color === 'black';
-                gameController.setupBoard({ flipped: shouldFlip });
-                console.log('✅ Board setup complete' + (shouldFlip ? ' (flipped for black)' : ''));
-            } else {
-                // Fallback: just reset
-                gameController.reset();
-                console.log('✅ Board reset complete');
+            // Xác định có cần xoay bàn cờ không
+            const shouldFlip = matchData && matchData.your_color === 'black';
+            
+            // Gọi hàm setupBoard của Controller
+            gameController.setupBoard({ flipped: shouldFlip });
+            
+            // QUAN TRỌNG: Gọi trực tiếp vào UI để force xoay CSS
+            if (gameController.ui && gameController.ui.flipBoard) {
+                gameController.ui.flipBoard(shouldFlip);
             }
+            
+            console.log(`Board setup: User is ${matchData ? matchData.your_color : 'unknown'}, Flipped: ${shouldFlip}`);
         } catch (error) {
-            console.error('❌ Board setup error:', error);
+            console.error('Board setup error:', error);
         }
 
         // Game state
