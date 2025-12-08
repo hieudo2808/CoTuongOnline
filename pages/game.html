@@ -233,16 +233,16 @@
         .game-chat {
             display: flex;
             flex-direction: column;
-            background: #1e1e2e;
+            background: #16213e;
             border-radius: 10px;
             overflow: hidden;
             border: 1px solid #333;
-            height: 320px; /* Tăng chiều cao lên chút cho thoáng */
+            height: 320px;
         }
 
         .chat-header {
             padding: 10px;
-            background: #2b2b3b;
+            background: #16213e;
             color: #ccc;
             font-size: 0.9em;
             border-bottom: 1px solid #444;
@@ -305,36 +305,43 @@
         }
 
         .chat-input-area {
-            padding: 15px; /* Tăng padding để tách biệt với tin nhắn */
-            background: #2b2b3b;
+            margin-top: auto;
+            padding: 15px; 
+            background: #16213e;
+            border-top: 1px solid #444; 
+            
             display: flex;
-            align-items: center; /* Căn giữa ô nhập và nút */
-            gap: 15px; /* Tăng khoảng cách giữa ô nhập và nút */
-            border-top: 1px solid #444; /* Thêm đường viền ngăn cách */
+            align-items: center;
+            gap: 15px;
         }
 
         #chat-input {
-            flex: 1;
-            padding: 10px 15px; /* Tăng kích thước ô nhập cho đẹp */
+            flex: 1; /* Chiếm toàn bộ khoảng trống còn lại */
+            padding: 10px 15px;
             border-radius: 20px;
             border: 1px solid #555;
             background: #161623;
             color: white;
             outline: none;
+            font-size: 14px;
         }
 
         #btn-send-chat {
+            /* Fix kích thước nút gửi */
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
             background: #007bff;
             color: white;
             border: none;
-            width: 40px; /* Tăng kích thước nút */
-            height: 40px;
-            border-radius: 50%;
             cursor: pointer;
-            font-size: 1.2em;
+            
+            /* Căn icon/text vào giữa nút */
             display: flex;
             align-items: center;
             justify-content: center;
+            font-size: 1.2em;
+            flex-shrink: 0; /* Không bị co lại khi màn hình nhỏ */
             transition: background 0.2s;
         }
 
@@ -414,11 +421,11 @@
 <body>
     <div class="game-page">
         <header class="game-header">
-            <h1 class="game-title">🎮 Đang Chơi</h1>
+            <h1 class="game-title">Đang Chơi</h1>
             <div class="game-actions">
-                <button class="btn btn-warning" id="btn-draw-offer">🤝 Xin Hòa</button>
-                <button class="btn btn-danger" id="btn-resign">🏳️ Đầu Hàng</button>
-                <button class="btn btn-secondary" id="btn-leave">🚪 Rời</button>
+                <button class="btn btn-warning" id="btn-draw-offer">Xin Hòa</button>
+                <button class="btn btn-danger" id="btn-resign">Đầu Hàng</button>
+                <button class="btn btn-secondary" id="btn-leave">Rời</button>
             </div>
         </header>
 
@@ -467,16 +474,21 @@
                 </div>
 
                 <!-- Chat -->
-                <div class="game-panel chat-section">
-                    <h3 class="panel-header">💬 Chat</h3>
+                <div class="game-chat">
+                    <div class="chat-header">Trò chuyện</div>
+                    
                     <div class="chat-messages" id="chat-messages">
-                        <div style="color: #aaa; text-align: center; padding: 20px;">
-                            Trò chuyện với đối thủ
-                        </div>
                     </div>
-                    <div class="chat-input-group">
-                        <input type="text" id="chat-input" placeholder="Nhập tin nhắn..." maxlength="200">
-                        <button id="btn-send-chat">💬</button>
+                    
+                    <div class="chat-input-area">
+                        <input type="text" id="chat-input" placeholder="Nhập tin nhắn..." autocomplete="off">
+                        
+                        <button id="btn-send-chat">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                            </svg>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -486,7 +498,7 @@
     <!-- Result Modal -->
     <div class="modal" id="result-modal">
         <div class="modal-content">
-            <h2 id="result-title">🏆 Kết Quả</h2>
+            <h2 id="result-title">Kết Quả</h2>
             <div class="result-stats">
                 <div class="stat-row">
                     <span>Kết quả:</span>
@@ -510,8 +522,8 @@
                 </div>
             </div>
             <div class="modal-actions">
-                <button class="btn btn-primary" id="btn-new-game">🔄 Trận Mới</button>
-                <button class="btn btn-secondary" id="btn-to-lobby">🏠 Lobby</button>
+                <button class="btn btn-primary" id="btn-new-game">Trận Mới</button>
+                <button class="btn btn-secondary" id="btn-to-lobby">Lobby</button>
             </div>
         </div>
     </div>
@@ -519,11 +531,11 @@
     <!-- Draw Offer Modal -->
     <div class="modal" id="draw-modal">
         <div class="modal-content">
-            <h2>🤝 Đề Nghị Hòa</h2>
+            <h2>Đề Nghị Hòa</h2>
             <p>Đối thủ đề nghị hòa. Bạn đồng ý không?</p>
             <div class="modal-actions">
-                <button class="btn btn-primary" id="btn-accept-draw">✅ Đồng Ý</button>
-                <button class="btn btn-danger" id="btn-decline-draw">❌ Từ Chối</button>
+                <button class="btn btn-primary" id="btn-accept-draw">Đồng Ý</button>
+                <button class="btn btn-danger" id="btn-decline-draw">Từ Chối</button>
             </div>
         </div>
     </div>
@@ -715,7 +727,6 @@
 
                 if (playerTime <= 0 || opponentTime <= 0) {
                     clearInterval(timerInterval);
-                    // Hết giờ -> Server sẽ gửi game_end, client không cần tự xử lý logic thắng thua
                 }
             }, 1000);
         }
@@ -902,47 +913,43 @@
         }
 
         // Move History Update
-        if (gameController.onMoveMade) {
-             // Backup listener cũ nếu có
-            const oldListener = gameController.onMoveMade;
-            gameController.onMoveMade = (move) => {
-                const list = document.getElementById('moves-list');
-                if (!list) return;
+        gameController.on('move-made', (move) => {
+             const list = document.getElementById('moves-list');
+             if (!list) return;
+             
+             // Xóa dòng thông báo "Chưa có nước đi" nếu còn
+             if (list.children.length > 0 && list.children[0].innerText.includes('Chưa có')) {
+                 list.innerHTML = '';
+             }
 
-                // Xóa dòng thông báo trống
-                if (list.children.length > 0 && list.children[0].innerText.includes('Chưa có')) {
-                    list.innerHTML = '';
-                }
+             const item = document.createElement('div');
+             item.className = 'move-record'; // Class này đã có CSS ở bước trước
+             // Thêm inline style để chắc chắn hiển thị đẹp ngay lập tức
+             item.style.display = 'flex';
+             item.style.justifyContent = 'space-between';
+             item.style.borderBottom = '1px solid #333';
+             item.style.padding = '5px 0';
+             
+             // Format hiển thị: 1. Đỏ: (R, C) -> (R, C)
+             const turnNum = list.children.length + 1;
+             
+             // Xác định màu và tên
+             const isRed = (move.color === 'red');
+             const colorClass = isRed ? '#ff4444' : '#aaaaaa';
+             const colorName = isRed ? "Đỏ" : "Đen";
 
-                const moveCount = list.children.length + 1;
-                
-                // Xác định màu và tên
-                const isRed = (move.color === 'red');
-                const colorClass = isRed ? '#ff4444' : '#aaaaaa';
-                const colorName = isRed ? "Đỏ" : "Đen";
-
-                // Tạo item
-                const item = document.createElement('div');
-                item.className = 'move-record'; // Class này đã có CSS ở bước trước
-                item.style.display = 'flex';
-                item.style.justifyContent = 'space-between';
-                item.style.borderBottom = '1px solid #333';
-                item.style.padding = '5px 0';
-                
-                item.innerHTML = `
-                    <span style="color: #666; width: 30px;">${moveCount}.</span>
-                    <span style="color: ${colorClass}; font-weight: 500; text-align: right; flex: 1;">
-                        ${colorName}: (${move.from.row}, ${move.from.col}) ➔ (${move.to.row}, ${move.to.col})
-                    </span>
-                `;
-                
-                list.appendChild(item);
-                list.scrollTop = list.scrollHeight;
-                
-                // Cập nhật luôn chỉ báo lượt đi cho chắc chắn
-                updateTurnIndicator();
-            };
-        }
+             const moveText = `${colorName}: (${move.from.row}, ${move.from.col}) ➔ (${move.to.row}, ${move.to.col})`;
+             
+             item.innerHTML = `
+                <span style="color: #666; width: 30px;">${turnNum}.</span>
+                <span style="color: ${colorClass}; font-weight: 500; text-align: right; flex: 1;">
+                    ${moveText}
+                </span>
+             `;
+             
+             list.appendChild(item);
+             list.scrollTop = list.scrollHeight;
+        });
 
         // Khởi chạy
         startTimer();

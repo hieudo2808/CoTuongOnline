@@ -102,9 +102,6 @@ bool match_validate_move(const char* match_id, int user_id, int from_row,
     // Basic sanity: from != to
     if (from_row == to_row && from_col == to_col) return false;
 
-    // TODO: Full move validation with game rules
-    // For now, accept any move that passes basic checks
-
     return true;
 }
 
