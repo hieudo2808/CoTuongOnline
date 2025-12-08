@@ -309,7 +309,7 @@
         </div>
 
         <div class="footer">
-            <p>&copy; 2025 Cờ Tướng Online | <a href="../public/rule.html" target="_blank">Luật chơi</a></p>
+            <p>&copy; 2025 Cờ Tướng Online</p>
         </div>
     </div>
 
@@ -413,7 +413,8 @@
                 localStorage.setItem('xiangqi_user', JSON.stringify({
                     username: response.username,
                     token: response.token,
-                    rating: response.rating
+                    rating: response.rating,
+                    user_id: response.user_id
                 }));
                 // Ensure network controller has the session token set (for immediate use)
                 try {

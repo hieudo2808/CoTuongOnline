@@ -482,7 +482,6 @@ void handle_move(server_t* server, client_t* client, message_t* msg) {
            from_col, to_row, to_col);
 }
 
-// Handler: Resign
 void handle_resign(server_t* server, client_t* client, message_t* msg) {
     // Validate token
     int user_id;
@@ -493,44 +492,63 @@ void handle_resign(server_t* server, client_t* client, message_t* msg) {
     client->user_id = user_id;
     client->authenticated = true;
 
-    // Get match_id
     const char* match_id = json_get_string(msg->payload_json, "match_id");
     if (!match_id) {
         send_response(server, client, msg->seq, false, "Missing match_id", NULL);
         return;
     }
 
-    // Get match
     match_t* match = match_get(match_id);
     if (!match || !match->active) {
         send_response(server, client, msg->seq, false, "Match not found", NULL);
         return;
     }
 
-    // Determine result
-    const char* result =
-        (user_id == match->red_user_id) ? "black_win" : "red_win";
+    // Xác định kết quả: Người gửi lệnh resign là người thua
+    const char* result = (user_id == match->red_user_id) ? "black_wins" : "red_wins";
 
-    // End match
+    // Kết thúc trận đấu
     match_end(match_id, result, "resign");
 
-    // Update ratings
+    // Biến để gửi về client
+    int new_red_rating = 0;
+    int new_black_rating = 0;
+
+    // Cập nhật Elo và Stats (Chỉ khi đấu Rank)
     if (match->rated) {
-        int red_rating, black_rating;
-        db_get_user_by_id(match->red_user_id, NULL, NULL, &red_rating, NULL,
-                          NULL, NULL);
-        db_get_user_by_id(match->black_user_id, NULL, NULL, &black_rating, NULL,
-                          NULL, NULL);
+        char u1[64], e1[128]; int r1, w1, l1, d1; // Red
+        char u2[64], e2[128]; int r2, w2, l2, d2; // Black
 
-        rating_change_t rating_change = rating_calculate(red_rating, black_rating, result, DEFAULT_K_FACTOR);
-        int red_new = red_rating + rating_change.red_change;
-        int black_new = black_rating + rating_change.black_change;
+        // Lấy thông tin hiện tại
+        db_get_user_by_id(match->red_user_id, u1, e1, &r1, &w1, &l1, &d1);
+        db_get_user_by_id(match->black_user_id, u2, e2, &r2, &w2, &l2, &d2);
 
-        db_update_user_rating(match->red_user_id, red_new);
-        db_update_user_rating(match->black_user_id, black_new);
+        // Tính toán Elo mới
+        rating_change_t rc = rating_calculate(r1, r2, result, DEFAULT_K_FACTOR);
+        
+        new_red_rating = r1 + rc.red_change;
+        new_black_rating = r2 + rc.black_change;
+
+        // Cập nhật số trận Thắng/Thua
+        if (strcmp(result, "red_wins") == 0) {
+            w1++; // Red thắng
+            l2++; // Black thua
+        } else {
+            l1++; // Red thua
+            w2++; // Black thắng
+        }
+
+        // Lưu vào Database
+        db_update_user_rating(match->red_user_id, new_red_rating);
+        db_update_user_stats(match->red_user_id, w1, l1, d1);
+        
+        db_update_user_rating(match->black_user_id, new_black_rating);
+        db_update_user_stats(match->black_user_id, w2, l2, d2);
+        
+        printf("[Rating] Resign: Red(%d->%d), Black(%d->%d)\n", r1, new_red_rating, r2, new_black_rating);
     }
 
-    // Save to database
+    // Lưu lịch sử trận đấu
     char* moves_json = match_get_moves_json(match);
     char started[32], ended[32];
     sprintf(started, "%ld", match->started_at);
@@ -539,19 +557,19 @@ void handle_resign(server_t* server, client_t* client, message_t* msg) {
                   moves_json, started, ended);
     free(moves_json);
 
-    // Success
+    // Phản hồi cho người gửi (đã xử lý xong)
     send_response(server, client, msg->seq, true, "Resigned", NULL);
 
-    // Notify opponent
-    char payload[256];
+    // Gửi Broadcast kết quả cho cả 2 người chơi (kèm Rating mới)
+    char payload[512];
     snprintf(payload, sizeof(payload),
-             "{\"match_id\":\"%s\",\"result\":\"%s\"}", match_id, result);
-    char notify[512];
+             "{\"match_id\":\"%s\",\"result\":\"%s\",\"red_rating\":%d,\"black_rating\":%d}", 
+             match_id, result, new_red_rating, new_black_rating);
+             
+    char notify[1024];
     snprintf(notify, sizeof(notify), "{\"type\":\"game_end\",\"payload\":%s}\n",
              payload);
     broadcast_to_match(server, match_id, notify);
-
-    printf("[Handler] Resign: %s, result: %s\n", match_id, result);
 }
 
 // Handler: Draw Offer
@@ -589,7 +607,6 @@ void handle_draw_offer(server_t* server, client_t* client, message_t* msg) {
     send_response(server, client, msg->seq, true, "Draw offer sent", NULL);
 }
 
-// Handler: Draw Response
 void handle_draw_response(server_t* server, client_t* client, message_t* msg) {
     // Validate token
     int user_id;
@@ -609,20 +626,60 @@ void handle_draw_response(server_t* server, client_t* client, message_t* msg) {
     }
 
     if (accept) {
-        // End match as draw
+        match_t* match = match_get(match_id);
+        if (!match || !match->active) {
+             send_response(server, client, msg->seq, false, "Match not found or ended", NULL);
+             return;
+        }
+
         match_end(match_id, "draw", "agreement");
 
-        // Notify both
-        char payload[256];
-        snprintf(payload, sizeof(payload),
-                 "{\"match_id\":\"%s\",\"result\":\"draw\"}", match_id);
-        char notify[512];
-        snprintf(notify, sizeof(notify),
-                 "{\"type\":\"game_end\",\"payload\":%s}\n", payload);
+        int new_red_rating = 0;
+        int new_black_rating = 0;
+
+        if (match->rated) {
+            char u1[64], e1[128]; int r1, w1, l1, d1;
+            char u2[64], e2[128]; int r2, w2, l2, d2;
+
+            db_get_user_by_id(match->red_user_id, u1, e1, &r1, &w1, &l1, &d1);
+            db_get_user_by_id(match->black_user_id, u2, e2, &r2, &w2, &l2, &d2);
+
+            rating_change_t rc = rating_calculate(r1, r2, "draw", DEFAULT_K_FACTOR);
+            
+            new_red_rating = r1 + rc.red_change;
+            new_black_rating = r2 + rc.black_change;
+
+            d1++;
+            d2++;
+            db_update_user_rating(match->red_user_id, new_red_rating);
+            db_update_user_stats(match->red_user_id, w1, l1, d1);
+
+            db_update_user_rating(match->black_user_id, new_black_rating);
+            db_update_user_stats(match->black_user_id, w2, l2, d2);
+            
+            printf("[Rating] Draw: Red(%d->%d), Black(%d->%d)\n", r1, new_red_rating, r2, new_black_rating);
+        }
+
+        char* moves_json = match_get_moves_json(match);
+        char started[32], ended[32];
+        sprintf(started, "%ld", match->started_at);
+        sprintf(ended, "%ld", time(NULL));
+        db_save_match(match_id, match->red_user_id, match->black_user_id, "draw",
+                      moves_json, started, ended);
+        free(moves_json);
+
+        char payload[512];
+        snprintf(payload, sizeof(payload), 
+                 "{\"match_id\":\"%s\",\"result\":\"draw\",\"red_rating\":%d,\"black_rating\":%d}", 
+                 match_id, new_red_rating, new_black_rating);
+                 
+        char notify[1024];
+        snprintf(notify, sizeof(notify), "{\"type\":\"game_end\",\"payload\":%s}\n", payload);
         broadcast_to_match(server, match_id, notify);
 
         send_response(server, client, msg->seq, true, "Draw accepted", NULL);
     } else {
+        // Từ chối hòa
         send_response(server, client, msg->seq, true, "Draw declined", NULL);
     }
 }
@@ -754,23 +811,35 @@ void handle_get_match(server_t* server, client_t* client, message_t* msg) {
     send_response(server, client, msg->seq, true, "Match found", match_json);
 }
 
-// Handler: Leaderboard
 void handle_leaderboard(server_t* server, client_t* client, message_t* msg) {
+    if (!msg->payload_json) {
+        send_response(server, client, msg->seq, false, "Invalid request payload", NULL);
+        return;
+    }
+
     int limit = json_get_int(msg->payload_json, "limit");
     int offset = json_get_int(msg->payload_json, "offset");
 
     if (limit <= 0) limit = 10;
     if (offset < 0) offset = 0;
 
-    char leaderboard_json[16384];
-    if (!db_get_leaderboard(limit, offset, leaderboard_json,
-                            sizeof(leaderboard_json))) {
-        send_response(server, client, msg->seq, false, "Failed to get leaderboard",
-                      NULL);
+    size_t buffer_size = 16384;
+    char* leaderboard_json = (char*)malloc(buffer_size);
+    
+    if (!leaderboard_json) {
+        perror("malloc failed in handle_leaderboard");
+        send_response(server, client, msg->seq, false, "Server memory error", NULL);
+        return;
+    }
+
+    if (!db_get_leaderboard(limit, offset, leaderboard_json, buffer_size)) {
+        send_response(server, client, msg->seq, false, "Failed to get leaderboard", NULL);
+        free(leaderboard_json);
         return;
     }
 
     send_response(server, client, msg->seq, true, "Leaderboard", leaderboard_json);
+    free(leaderboard_json);
 }
 
 // Handler: Join Match (used when reconnecting to associate connection with user)

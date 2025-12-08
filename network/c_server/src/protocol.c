@@ -11,6 +11,8 @@
 
 // Simple JSON parser (minimal - for production use cJSON or similar)
 char* json_get_string(const char* json, const char* key) {
+    if (!json || !key) return NULL;
+
     char search[256];
     snprintf(search, sizeof(search), "\"%s\":", key);
 
@@ -37,6 +39,8 @@ char* json_get_string(const char* json, const char* key) {
 }
 
 int json_get_int(const char* json, const char* key) {
+    if (!json || !key) return 0;
+
     char search[256];
     snprintf(search, sizeof(search), "\"%s\":", key);
 
@@ -50,6 +54,8 @@ int json_get_int(const char* json, const char* key) {
 }
 
 bool json_get_bool(const char* json, const char* key) {
+    if (!json || !key) return false;
+    
     char search[256];
     snprintf(search, sizeof(search), "\"%s\":", key);
 

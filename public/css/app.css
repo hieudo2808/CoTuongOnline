@@ -381,25 +381,6 @@ button:disabled {
     min-width: 0;
 }
 
-#app .online-stats {
-    display: flex;
-    gap: var(--gap-xl);
-    padding: var(--gap-md);
-    background: #f8f9fa;
-    border-radius: var(--radius-md);
-    margin-bottom: var(--gap-lg);
-}
-
-#app .online-stats span {
-    font-size: 1.1rem;
-    color: var(--text-light);
-}
-
-#app .online-stats strong {
-    color: var(--success-color);
-    font-size: 1.3rem;
-}
-
 #app #app .rooms-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));

@@ -46,17 +46,15 @@ class NetworkGameController extends GameController {
         this.onGameEnd = null;
         this.onConnectionError = null;
         this.onChatMessage = null;
+        this.onDrawOffer = null;       // Callback khi nhận lời mời hòa
+        this.onChallengeReceived = null; // Callback khi nhận thách đấu
     }
     
     /**
      * Initialize board UI (can be called later if not done in constructor)
      */
     initBoardUI(boardContainerId) {
-        if (this.ui && !this.ui.isLegacyMode) {
-            console.log("[NetworkGame] Board already initialized");
-            return;
-        }
-        
+        if (this.ui && !this.ui.isLegacyMode) return;
         const { UI } = require("../ui/renderer.js");
         this.ui = new UI(boardContainerId);
         this.ui.renderBoard(this.chessboard.board);
@@ -67,67 +65,36 @@ class NetworkGameController extends GameController {
     // Initialize network connection
     async connectToServer(host, port) {
         this.network = new NetworkBridge();
-
         try {
             await this.network.connect(host, port);
             console.log("[NetworkGame] Connected to server");
-
-            // Setup event listeners
             this.setupNetworkListeners();
-
             return true;
         } catch (error) {
             console.error("[NetworkGame] Connection failed:", error);
-            if (this.onConnectionError) {
-                this.onConnectionError(error);
-            }
+            if (this.onConnectionError) this.onConnectionError(error);
             return false;
         }
     }
 
     // Setup network event listeners
     setupNetworkListeners() {
-        // Match found
-        this.network.on("match_found", (msg) => {
-            console.log("[NetworkGame] Match found:", msg.payload);
-            this.handleMatchFound(msg.payload);
-        });
-
-        // Opponent move
-        this.network.on("opponent_move", (msg) => {
-            console.log("[NetworkGame] Opponent move:", msg.payload);
-            this.handleOpponentMove(msg.payload);
-        });
-
-        // Game end
-        this.network.on("game_end", (msg) => {
-            console.log("[NetworkGame] Game ended:", msg.payload);
-            this.handleGameEnd(msg.payload);
-        });
-
-        // Draw offer
+        this.network.on("match_found", (msg) => this.handleMatchFound(msg.payload));
+        this.network.on("opponent_move", (msg) => this.handleOpponentMove(msg.payload));
+        this.network.on("game_end", (msg) => this.handleGameEnd(msg.payload));
+        
         this.network.on("draw_offer", (msg) => {
             console.log("[NetworkGame] Draw offer received");
             this.handleDrawOffer(msg.payload);
         });
 
-        // Ready list update
-        this.network.on("ready_list_update", (msg) => {
-            console.log("[NetworkGame] Ready list updated");
-            this.handleReadyListUpdate(msg.payload);
-        });
-
-        // Challenge received
         this.network.on("challenge_received", (msg) => {
             console.log("[NetworkGame] Challenge received");
             this.handleChallengeReceived(msg.payload);
         });
 
-        // Chat message
-        this.network.on("chat_message", (msg) => {
-            console.log("[NetworkGame] Chat message received");
-            this.handleChatMessage(msg.payload);
-        });
+        this.network.on("chat_message", (msg) => this.handleChatMessage(msg.payload));
+        this.network.on("ready_list_update", (msg) => this.handleReadyListUpdate(msg.payload));
     }
 
     // Register new user
@@ -170,7 +137,8 @@ class NetworkGameController extends GameController {
                 status: 'success',
                 username: payload.username,
                 token: payload.token,
-                rating: payload.rating
+                rating: payload.rating,
+                user_id: payload.user_id
             };
         } catch (error) {
             console.error("[NetworkGame] Login failed:", error);
@@ -179,15 +147,7 @@ class NetworkGameController extends GameController {
     }
 
     // Set ready status
-    async setReady(ready = true) {
-        try {
-            await this.network.setReady(ready);
-            console.log("[NetworkGame] Ready status set:", ready);
-        } catch (error) {
-            console.error("[NetworkGame] Set ready failed:", error);
-            throw error;
-        }
-    }
+    async setReady(ready = true) { return this.network.setReady(ready); }
 
     // Join/rejoin a match (used when reconnecting to game.html)
     // This sends a message to server so it associates this connection with user_id
@@ -208,40 +168,45 @@ class NetworkGameController extends GameController {
     }
 
     // Find match
-    async findMatch(mode = "random") {
+    async findMatch(mode = "rated") {
         try {
             const response = await this.network.findMatch(mode);
             console.log("[NetworkGame] Find match response:", response);
             return response;
         } catch (error) {
             console.error("[NetworkGame] Find match failed:", error);
-            // Show user-friendly alert with server error message
-            try {
-                alert(error.message || 'Tìm trận thất bại');
-            } catch (e) {
-                // ignore if alert not available
-            }
             throw error;
         }
     }
 
-    // Handle match found
     handleMatchFound(payload) {
-        this.matchId = payload.match_id;
-        this.myColor = payload.your_color;
+        // Parse payload nếu nó là string (đề phòng)
+        let data = payload;
+        if (typeof data === 'string') {
+            try { data = JSON.parse(data); } catch (e) {}
+        }
+
+        this.matchId = data.match_id;
+        this.myColor = data.your_color;
         this.isOnlineMode = true;
-        this.isMyTurn = this.myColor === "red"; // Red goes first
+        this.isMyTurn = this.myColor === "red"; // Red đi trước
 
-        console.log(
-            `[NetworkGame] Match started: ${this.matchId}, playing as ${this.myColor}`
-        );
+        // --- FIX LỖI SAI ELO ---
+        // Server gửi về dạng: opponent: { username: "...", rating: 1200 }
+        // Cần flatten ra để UI dễ dùng
+        if (data.opponent && typeof data.opponent === 'object') {
+            data.opponent_name = data.opponent.username;
+            data.opponent_rating = data.opponent.rating;
+        }
+        
+        console.log(`[NetworkGame] Match started: ${this.matchId}, opponent: ${data.opponent_name} (${data.opponent_rating})`);
 
-        // Setup board with flip for black player
+        // Setup board
         this.setupBoard({ flipped: this.myColor === "black" });
 
-        // Callback
+        // Callback UI
         if (this.onMatchFound) {
-            this.onMatchFound(payload);
+            this.onMatchFound(data); // Truyền data đã chuẩn hóa
         }
     }
 
@@ -313,9 +278,6 @@ class NetworkGameController extends GameController {
         }
     }
 
-    // Handle opponent move
-    // Thay thế method handleOpponentMove trong src/core/networkGameController.js
-
     handleOpponentMove(payload) {
         console.log("[NetworkGame] Recv Move:", payload);
         
@@ -340,7 +302,6 @@ class NetworkGameController extends GameController {
         const piece = this.chessboard.board[fromRow][fromCol];
         if (!piece) {
             console.error(`Sync Error: No piece at ${fromRow},${fromCol}`);
-            // Yêu cầu tải lại bàn cờ nếu cần
             return;
         }
 
@@ -356,7 +317,6 @@ class NetworkGameController extends GameController {
         super.executeMove(toRow, toCol);
 
         // 5. Cập nhật trạng thái
-        // Sau khi executeMove, turn đã được switch.
         // Giờ là lượt của mình
         this.isMyTurn = true;
         this.ui.updateTurn(this.chessboard.turn); // Update text hiển thị
@@ -410,39 +370,22 @@ class NetworkGameController extends GameController {
 
     // Handle draw offer
     handleDrawOffer(payload) {
-        const accept = confirm("Opponent offers a draw. Accept?");
-        // SỬA: respondToDraw -> respondDraw
-        this.network.respondDraw(payload.match_id, accept);
+        // Kiểm tra xem UI có đăng ký xử lý không
+        if (this.onDrawOffer) {
+            this.onDrawOffer(payload);
+        } else {
+            console.log("No UI handler for draw offer");
+        }
     }
 
     // Handle game end
     handleGameEnd(payload) {
         this.isOnlineMode = false;
         this.isMyTurn = false;
-
         console.log("[NetworkGame] Game ended:", payload.result);
-
-        // Callback
         if (this.onGameEnd) {
             this.onGameEnd(payload);
         }
-
-        // Show result
-        const result = payload.result;
-        let message = "";
-
-        if (result === "draw") {
-            message = "Game ended in a draw";
-        } else if (
-            (result === "red_win" && this.myColor === "red") ||
-            (result === "black_win" && this.myColor === "black")
-        ) {
-            message = "You won!";
-        } else {
-            message = "You lost!";
-        }
-
-        alert(message);
     }
 
     // Get leaderboard
@@ -485,13 +428,11 @@ class NetworkGameController extends GameController {
 
     // Handle challenge received
     handleChallengeReceived(payload) {
-        const accept = confirm(
-            `User ${payload.from_user_id} challenges you to a ${
-                payload.rated ? "rated" : "casual"
-            } game. Accept?`
-        );
-        // SỬA: respondToChallenge -> respondChallenge
-        this.network.respondChallenge(payload.challenge_id, accept);
+        if (this.onChallengeReceived) {
+            this.onChallengeReceived(payload);
+        } else {
+            console.log("No UI handler for challenge");
+        }
     }
 
     // Handle chat message

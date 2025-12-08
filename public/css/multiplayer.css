@@ -111,25 +111,6 @@
     transform: translateX(5px);
 }
 
-.online-stats {
-    display: flex;
-    gap: 20px;
-    margin-bottom: 20px;
-    padding: 15px;
-    background: #f8f9fa;
-    border-radius: 8px;
-}
-
-.online-stats span {
-    font-size: 14px;
-    color: #666;
-}
-
-.online-stats strong {
-    color: #667eea;
-    font-size: 18px;
-}
-
 /* Room Screen */
 .room-container {
     max-width: 1000px;

@@ -230,56 +230,109 @@
             font-weight: bold;
         }
 
-        .chat-section {
-            flex: 1;
+        .game-chat {
             display: flex;
             flex-direction: column;
-            min-height: 0;
+            background: #1e1e2e;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid #333;
+            height: 300px;
+        }
+
+        .chat-header {
+            padding: 10px;
+            background: #2b2b3b;
+            color: #ccc;
+            font-size: 0.9em;
+            border-bottom: 1px solid #444;
+            font-weight: bold;
         }
 
         .chat-messages {
             flex: 1;
             overflow-y: auto;
-            margin-bottom: 10px;
-            max-height: 200px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: #161623;
         }
 
         .chat-message {
-            padding: 8px;
-            margin-bottom: 5px;
-            background: #0f3460;
-            border-radius: 5px;
-            color: white;
-            font-size: 0.9em;
+            display: flex;
+            flex-direction: column;
+            max-width: 80%;
         }
 
-        .chat-message .sender {
-            color: #ffd700;
-            font-weight: bold;
+        .chat-message.me {
+            align-self: flex-end;
+            align-items: flex-end;
+        }
+
+        .chat-message.opponent {
+            align-self: flex-start;
+            align-items: flex-start;
+        }
+
+        .message-sender {
+            font-size: 0.75em;
+            color: #888;
+            margin-bottom: 4px;
+            margin-left: 5px;
             margin-right: 5px;
         }
 
-        .chat-input-group {
-            display: flex;
-            gap: 5px;
+        .message-bubble {
+            padding: 8px 12px;
+            border-radius: 15px;
+            font-size: 0.95em;
+            line-height: 1.4;
+            word-wrap: break-word;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
         }
 
-        .chat-input-group input {
-            flex: 1;
-            padding: 8px;
-            border: 2px solid #0f3460;
-            border-radius: 5px;
-            background: #0f1419;
+        .me .message-bubble {
+            background: #007bff;
             color: white;
+            border-bottom-right-radius: 2px;
         }
 
-        .chat-input-group button {
-            padding: 8px 15px;
-            background: #667eea;
+        .opponent .message-bubble {
+            background: #3a3a4c;
+            color: #e0e0e0;
+            border-bottom-left-radius: 2px;
+        }
+
+        .chat-input-area {
+            padding: 10px;
+            background: #2b2b3b;
+            display: flex;
+            gap: 10px;
+        }
+
+        #chat-input {
+            flex: 1;
+            padding: 8px 12px;
+            border-radius: 20px;
+            border: 1px solid #555;
+            background: #161623;
+            color: white;
+            outline: none;
+        }
+
+        #btn-send-chat {
+            background: #007bff;
             color: white;
             border: none;
-            border-radius: 5px;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
             cursor: pointer;
+            font-size: 1.2em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .game-controls {
@@ -477,7 +530,7 @@
     <script type="module">
         import NetworkGameController from '../src/core/networkGameController.js?v=7';
 
-        // Check authentication and match
+        // 1. Khởi tạo dữ liệu
         const userDataStr = localStorage.getItem('xiangqi_user');
         const matchDataStr = localStorage.getItem('current_match');
 
@@ -488,108 +541,171 @@
         const userData = JSON.parse(userDataStr);
         let matchData = matchDataStr ? JSON.parse(matchDataStr) : null;
 
-        // Initialize game controller
+        // 2. Khởi tạo Controller
         const gameController = new NetworkGameController('xiangqi-board');
         window.gameController = gameController;
 
-        // Reconnect to server if needed and restore match state
+        // --- QUAN TRỌNG: Nạp ngay thông tin trận đấu để các nút bấm hoạt động ---
+        if (matchData) {
+            gameController.matchId = matchData.match_id;
+            gameController.myColor = matchData.your_color;
+            gameController.isOnlineMode = true;
+            gameController.isMyTurn = (matchData.your_color === 'red'); 
+            // Lưu ý: isMyTurn sẽ được server cập nhật lại chính xác sau khi connect
+        }
+
+        // Biến toàn cục cho Timer
+        let timerInterval = null;
+        let playerTime = 600; 
+        let opponentTime = 600;
+        let isGameActive = true;
+
+        // 3. Kết nối Server & Đồng bộ
         (async () => {
             try {
                 const serverInfoStr = localStorage.getItem('xiangqi_server');
                 if (!serverInfoStr) {
-                    console.warn('No server info found, redirecting to lobby');
-                    setTimeout(() => window.location.href = 'lobby.html', 800);
+                    alert("Mất thông tin server, vui lòng đăng nhập lại.");
+                    exitToLobby();
                     return;
                 }
 
                 const serverInfo = JSON.parse(serverInfoStr);
                 const connected = await gameController.connectToServer(serverInfo.host, serverInfo.port);
+                
                 if (!connected) {
-                    console.error('Failed to connect to server');
-                    setTimeout(() => window.location.href = 'lobby.html', 800);
-                    return;
+                    throw new Error("Không thể kết nối Server Game");
                 }
 
-                // Restore token if present
-                const userDataStr = localStorage.getItem('xiangqi_user');
-                if (userDataStr) {
-                    try {
-                        const user = JSON.parse(userDataStr);
-                        if (user.token) {
-                            gameController.token = user.token;
-                            if (gameController.network) gameController.network.sessionToken = user.token;
-                        }
-                    } catch (e) { /* ignore parse errors */ }
+                // Restore token
+                if (userData.token) {
+                    gameController.token = userData.token;
+                    if (gameController.network) gameController.network.sessionToken = userData.token;
                 }
 
-                // If match data exists (carried over from lobby), initialize local match state
+                // Join Match để đồng bộ trạng thái mới nhất từ Server
                 if (matchData) {
-                    try {
-                        // Join match on server to associate connection with user
-                        const joinResult = await gameController.joinMatch(matchData.match_id);
-                        if (joinResult && joinResult.payload) {
-                            // Sync turn state from server
-                            const serverState = typeof joinResult.payload === 'string' 
-                                ? JSON.parse(joinResult.payload) 
-                                : joinResult.payload;
-                            console.log('[Game] Server match state:', serverState);
-                            
-                            // Update isMyTurn based on server state
-                            if (serverState.is_my_turn !== undefined) {
-                                gameController.isMyTurn = serverState.is_my_turn;
-                            }
+                    const joinResult = await gameController.joinMatch(matchData.match_id);
+                    
+                    // Cập nhật lại lượt đi từ server (tránh bị lệch lượt khi refresh)
+                    if (joinResult && joinResult.payload) {
+                        const state = typeof joinResult.payload === 'string' ? JSON.parse(joinResult.payload) : joinResult.payload;
+                        if (state.is_my_turn !== undefined) {
+                            gameController.isMyTurn = state.is_my_turn;
+                            updateTurnIndicator();
                         }
-                        
-                        gameController.handleMatchFound(matchData);
-                    } catch (e) {
-                        console.error('Failed to initialize match state:', e);
+                    }
+                    
+                    // Setup bàn cờ (Xoay nếu là quân Đen)
+                    const shouldFlip = matchData.your_color === 'black';
+                    gameController.setupBoard({ flipped: shouldFlip });
+                    if (gameController.ui && gameController.ui.flipBoard) {
+                        gameController.ui.flipBoard(shouldFlip);
                     }
                 }
+
+                // --- LẮNG NGHE SỰ KIỆN TỪ SERVER ---
+                if (gameController.network) {
+                    // 1. Đối thủ đi quân
+                    gameController.network.on('opponent_move', (data) => {
+                        gameController.handleOpponentMove(data.payload || data);
+                        updateTurnIndicator(); // Cập nhật UI lượt đi
+                    });
+
+                    // 2. Chat
+                    gameController.network.on('chat_message', (data) => {
+                        let payload = data.payload || data;
+                        if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch(e) {} }
+
+                        if (payload.username === userData.username) {
+                            return; // Bỏ qua tin nhắn của chính mình
+                        }
+
+                        let senderDisplay = payload.username;
+                        if (!senderDisplay || senderDisplay === 'Unknown') {
+                            senderDisplay = matchData.opponent_name || 'Đối thủ';
+                        }
+
+                        addChatMessage(senderDisplay, payload.message, false);
+                    });
+
+                    // 3. Xin Hòa (Draw Offer)
+                    gameController.network.on('draw_offer', () => {
+                        document.getElementById('draw-modal').classList.add('active');
+                    });
+
+                    // 4. TRẬN ĐẤU KẾT THÚC (Quan trọng)
+                    gameController.network.on('game_end', (data) => {
+                        console.log("Game Over Event:", data);
+                        
+                        let payload = data.payload || data;
+                        if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch(e) {} }
+
+                        if (payload.red_rating && payload.black_rating) {
+                            let newRating = (matchData.your_color === 'red') ? payload.red_rating : payload.black_rating;
+                            let oppRating = (matchData.your_color === 'red') ? payload.black_rating : payload.red_rating;
+
+                            if (newRating > 0) {
+                                userData.rating = newRating;
+                                
+                                localStorage.setItem('xiangqi_user', JSON.stringify(userData));
+                                
+                                // 3. Cập nhật UI Header ngay lập tức
+                                const ratingDisplay = document.getElementById('player-rating');
+                                if (ratingDisplay) ratingDisplay.textContent = `⭐ ${newRating}`;
+                                
+                                // Cập nhật cả rating đối thủ trên UI
+                                const oppRatingDisplay = document.getElementById('opponent-rating');
+                                if (oppRatingDisplay) oppRatingDisplay.textContent = `⭐ ${oppRating}`;
+                                
+                                // Cập nhật số liệu trong Modal Kết quả
+                                const resultNewRating = document.getElementById('result-new-rating');
+                                if (resultNewRating) resultNewRating.textContent = newRating;
+                            }
+                        }
+                        // -------------------------
+
+                        let result = 'draw';
+                        let reason = payload.reason || 'Kết thúc';
+
+                        if (payload.result === 'red_wins') {
+                            result = (matchData.your_color === 'red') ? 'win' : 'loss';
+                        } else if (payload.result === 'black_wins') {
+                            result = (matchData.your_color === 'black') ? 'win' : 'loss';
+                        }
+
+                        showResult(result, reason);
+                    });
+                }
+
             } catch (e) {
-                console.error('Reconnect/setup failed:', e);
-                setTimeout(() => window.location.href = 'lobby.html', 800);
+                console.error('Setup failed:', e);
+                alert("Lỗi kết nối: " + e.message);
+                exitToLobby();
             }
         })();
 
-        // Display player info
+        // --- UI & LOGIC ---
+
+        // Hiển thị thông tin người chơi
         document.getElementById('player-name').textContent = userData.username;
         document.getElementById('player-rating').textContent = `⭐ ${userData.rating || 1500}`;
-
         if (matchData) {
-            document.getElementById('opponent-name').textContent = matchData.opponent || 'Đối thủ';
+            document.getElementById('opponent-name').textContent = matchData.opponent_name || 'Đối thủ';
             document.getElementById('opponent-rating').textContent = `⭐ ${matchData.opponent_rating || 1500}`;
         }
 
-        // Setup board - check if method exists
-        try {
-            // Xác định có cần xoay bàn cờ không
-            const shouldFlip = matchData && matchData.your_color === 'black';
-            
-            // Gọi hàm setupBoard của Controller
-            gameController.setupBoard({ flipped: shouldFlip });
-            
-            // QUAN TRỌNG: Gọi trực tiếp vào UI để force xoay CSS
-            if (gameController.ui && gameController.ui.flipBoard) {
-                gameController.ui.flipBoard(shouldFlip);
-            }
-            
-            console.log(`Board setup: User is ${matchData ? matchData.your_color : 'unknown'}, Flipped: ${shouldFlip}`);
-        } catch (error) {
-            console.error('Board setup error:', error);
-        }
-
-        // Game state
-        let moveCount = 0;
-        let isMyTurn = matchData ? (matchData.your_color === 'red') : true; // Red goes first
-        let gameStartTime = Date.now();
-        let playerTime = 600; // 10 minutes in seconds
-        let opponentTime = 600;
-        let timerInterval = null;
-
-        // Start timers
+        // Timer Logic
         function startTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+            
             timerInterval = setInterval(() => {
-                if (isMyTurn) {
+                if (!isGameActive) {
+                    clearInterval(timerInterval);
+                    return;
+                }
+
+                if (gameController.isMyTurn) {
                     playerTime--;
                     updateTimerDisplay('player-timer', playerTime);
                 } else {
@@ -597,243 +713,213 @@
                     updateTimerDisplay('opponent-timer', opponentTime);
                 }
 
-                // Check timeout
                 if (playerTime <= 0 || opponentTime <= 0) {
                     clearInterval(timerInterval);
-                    handleTimeout();
+                    // Hết giờ -> Server sẽ gửi game_end, client không cần tự xử lý logic thắng thua
                 }
             }, 1000);
         }
 
         function updateTimerDisplay(id, seconds) {
-            const element = document.getElementById(id);
-            const minutes = Math.floor(seconds / 60);
-            const secs = seconds % 60;
-            element.textContent = `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-            
-            if (seconds < 30) {
-                element.classList.add('warning');
-            } else {
-                element.classList.remove('warning');
-            }
+            const el = document.getElementById(id);
+            if(seconds < 0) seconds = 0;
+            const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const s = (seconds % 60).toString().padStart(2, '0');
+            el.textContent = `${m}:${s}`;
+            el.classList.toggle('warning', seconds < 30);
         }
 
-        function handleTimeout() {
-            const winner = playerTime <= 0 ? 'opponent' : 'player';
-            showResult(winner === 'player' ? 'win' : 'loss', 'timeout');
-        }
-
-        // Turn management
         function updateTurnIndicator() {
             const turnText = document.getElementById('turn-text');
             const playerPanel = document.getElementById('player-panel');
             const opponentPanel = document.getElementById('opponent-panel');
 
-            if (isMyTurn) {
-                turnText.textContent = '✨ Lượt của bạn';
+            if (gameController.isMyTurn) {
+                turnText.innerHTML = '<span style="color:#27ae60">✅ Đến lượt bạn</span>';
                 playerPanel.classList.add('active');
                 opponentPanel.classList.remove('active');
             } else {
-                turnText.textContent = '⏳ Lượt đối thủ';
+                turnText.innerHTML = '<span style="color:#f39c12">⏳ Đối thủ đang nghĩ...</span>';
                 playerPanel.classList.remove('active');
                 opponentPanel.classList.add('active');
             }
         }
 
-        // Move made handler - check if on() method exists
-        if (typeof gameController.on === 'function') {
-            gameController.on('move-made', (move) => {
-                moveCount++;
-                addMoveToHistory(moveCount, move);
-                isMyTurn = !isMyTurn;
-                updateTurnIndicator();
-            });
-        }
+        // --- XỬ LÝ KẾT THÚC GAME ---
 
-        function addMoveToHistory(num, move) {
-            const movesList = document.getElementById('moves-list');
-            
-            if (moveCount === 1) {
-                movesList.innerHTML = '';
-            }
-
-            const moveItem = document.createElement('div');
-            moveItem.className = 'move-item';
-            moveItem.innerHTML = `
-                <span class="move-number">${num}.</span>
-                <span>${formatMove(move)}</span>
-            `;
-            movesList.appendChild(moveItem);
-            movesList.scrollTop = movesList.scrollHeight;
-        }
-
-        function formatMove(move) {
-            // Format: "E2 → E4" or with piece name
-            return `${move.from} → ${move.to}`;
-        }
-
-        // Chat functionality
-        document.getElementById('btn-send-chat').addEventListener('click', sendChatMessage);
-        document.getElementById('chat-input').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') sendChatMessage();
-        });
-
-        async function sendChatMessage() {
-            const input = document.getElementById('chat-input');
-            const message = input.value.trim();
-
-            if (!message) return;
-
-            try {
-                if (gameController && gameController.sendChatMessage) {
-                    await gameController.sendChatMessage(message);
-                }
-                
-                addChatMessage(userData.username, message, true);
-                input.value = '';
-            } catch (error) {
-                console.error('Failed to send message:', error);
-            }
-        }
-
-        function addChatMessage(sender, message, isMine = false) {
-            const chatMessages = document.getElementById('chat-messages');
-            
-            if (chatMessages.children.length === 1 && chatMessages.children[0].style.color) {
-                chatMessages.innerHTML = '';
-            }
-
-            const msgDiv = document.createElement('div');
-            msgDiv.className = 'chat-message';
-            msgDiv.innerHTML = `<span class="sender">${isMine ? 'Bạn' : sender}:</span>${message}`;
-            chatMessages.appendChild(msgDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-
-        // Game controls
-        document.getElementById('btn-resign').addEventListener('click', async () => {
-            if (confirm('Bạn có chắc muốn đầu hàng?')) {
-                try {
-                    if (gameController && gameController.resign) {
-                        await gameController.resign();
-                    }
-                    showResult('loss', 'resignation');
-                } catch (error) {
-                    console.error('Resign error:', error);
-                }
-            }
-        });
-
-        document.getElementById('btn-draw-offer').addEventListener('click', async () => {
-            try {
-                if (gameController && gameController.offerDraw) {
-                    await gameController.offerDraw();
-                    alert('Đã gửi đề nghị hòa!');
-                }
-            } catch (error) {
-                console.error('Draw offer error:', error);
-            }
-        });
-
-        document.getElementById('btn-leave').addEventListener('click', () => {
-            if (confirm('Rời khỏi trận đấu sẽ tính là thua. Bạn có chắc?')) {
-                window.location.href = 'lobby.html';
-            }
-        });
-
-        document.getElementById('btn-hint').addEventListener('click', () => {
-            alert('Chức năng gợi ý đang phát triển!');
-        });
-
-        document.getElementById('btn-undo').addEventListener('click', () => {
-            alert('Chức năng xin lại đang phát triển!');
-        });
-
-        // Draw modal handlers
-        document.getElementById('btn-accept-draw').addEventListener('click', () => {
-            document.getElementById('draw-modal').classList.remove('active');
-            showResult('draw', 'agreement');
-        });
-
-        document.getElementById('btn-decline-draw').addEventListener('click', () => {
-            document.getElementById('draw-modal').classList.remove('active');
-            alert('Đã từ chối đề nghị hòa');
-        });
-
-        // Result modal handlers
-        document.getElementById('btn-new-game').addEventListener('click', () => {
-            window.location.href = 'lobby.html';
-        });
-
-        document.getElementById('btn-to-lobby').addEventListener('click', () => {
-            window.location.href = 'lobby.html';
-        });
-
-        // Show result
         function showResult(result, reason) {
-            clearInterval(timerInterval);
-            
+            // 1. Dừng game ngay lập tức
+            isGameActive = false;
+            if (timerInterval) clearInterval(timerInterval);
+            gameController.isOnlineMode = false; // Chặn nước đi mới
+
+            // 2. Hiện Modal Kết Quả
             const modal = document.getElementById('result-modal');
             const title = document.getElementById('result-title');
             const outcome = document.getElementById('result-outcome');
-            const moves = document.getElementById('result-moves');
-            const time = document.getElementById('result-time');
-            const ratingChange = document.getElementById('result-rating-change');
-            const newRating = document.getElementById('result-new-rating');
+            const reasonText = document.getElementById('result-moves'); // Tạm dùng field này hiện lý do
 
-            // Set title and outcome
             if (result === 'win') {
-                title.textContent = '🏆 Chiến Thắng!';
-                outcome.textContent = '1 - 0';
-                ratingChange.textContent = '+15';
+                title.textContent = '🏆 CHIẾN THẮNG!';
+                title.style.color = '#ffd700';
+                outcome.textContent = 'Bạn đã thắng';
             } else if (result === 'loss') {
-                title.textContent = '😔 Thua Cuộc';
-                outcome.textContent = '0 - 1';
-                ratingChange.textContent = '-15';
+                title.textContent = '💔 THẤT BẠI';
+                title.style.color = '#ff4444';
+                outcome.textContent = 'Bạn đã thua';
             } else {
-                title.textContent = '🤝 Hòa';
-                outcome.textContent = '½ - ½';
-                ratingChange.textContent = '+0';
+                title.textContent = '🤝 HÒA';
+                title.style.color = '#4a90e2';
+                outcome.textContent = 'Hai bên hòa nhau';
+            }
+            
+            reasonText.textContent = `Lý do: ${reason}`;
+            modal.classList.add('active');
+
+            // 3. Đếm ngược tự động thoát
+            let countdown = 5;
+            const btnLobby = document.getElementById('btn-to-lobby');
+            const originalText = btnLobby.textContent;
+            
+            const autoExitInterval = setInterval(() => {
+                countdown--;
+                btnLobby.textContent = `Về Lobby (${countdown}s)`;
+                if (countdown <= 0) {
+                    clearInterval(autoExitInterval);
+                    exitToLobby();
+                }
+            }, 1000);
+        }
+
+        function exitToLobby() {
+            localStorage.removeItem('current_match'); // Xóa match cũ
+            if (window.gameController) window.gameController.disconnect();
+            window.location.href = 'lobby.html';
+        }
+
+        // --- BUTTON EVENTS ---
+
+        // Nút Rời Trận (Đầu hàng trước khi thoát)
+        document.getElementById('btn-leave').addEventListener('click', async () => {
+            if (!isGameActive) { exitToLobby(); return; }
+            
+            if (confirm('Bạn chắc chắn muốn đầu hàng và rời trận?')) {
+                try {
+                    await gameController.resign(); // Gửi lệnh thua
+                } catch(e) { 
+                    console.error(e); 
+                } finally {
+                    // Đợi 500ms cho message đi rồi thoát
+                    setTimeout(exitToLobby, 500);
+                }
+            }
+        });
+
+        // Nút Xin Hòa
+        document.getElementById('btn-draw-offer').addEventListener('click', async () => {
+            if (!isGameActive) return;
+            try {
+                await gameController.offerDraw();
+                alert('Đã gửi lời mời hòa!');
+            } catch (error) {
+                console.error(error);
+                alert('Lỗi: ' + error.message);
+            }
+        });
+
+        // Nút Đầu Hàng
+        document.getElementById('btn-resign').addEventListener('click', async () => {
+            if (!isGameActive) return;
+            if (confirm('Bạn muốn đầu hàng?')) {
+                await gameController.resign();
+            }
+        });
+
+        // Xử lý Modal Xin Hòa (Đồng ý/Từ chối)
+        document.getElementById('btn-accept-draw').addEventListener('click', async () => {
+            document.getElementById('draw-modal').classList.remove('active');
+            await gameController.network.respondDraw(gameController.matchId, true);
+        });
+
+        document.getElementById('btn-decline-draw').addEventListener('click', async () => {
+            document.getElementById('draw-modal').classList.remove('active');
+            await gameController.network.respondDraw(gameController.matchId, false);
+        });
+
+        // Các nút trong Modal Kết Quả
+        document.getElementById('btn-new-game').addEventListener('click', exitToLobby);
+        document.getElementById('btn-to-lobby').addEventListener('click', exitToLobby);
+
+        // Chat
+        document.getElementById('btn-send-chat').addEventListener('click', sendChat);
+        document.getElementById('chat-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendChat();
+        });
+
+        async function sendChat() {
+            const input = document.getElementById('chat-input');
+            const msg = input.value.trim();
+            if (!msg) return;
+            
+            try {
+                // 1. Gửi lên server
+                await gameController.sendChatMessage(msg);
+                
+                // 2. Hiển thị ngay lập tức (Optimistic UI)
+                addChatMessage(userData.username, msg, true); // True = là tin mình gửi
+                
+                input.value = '';
+            } catch (e) {
+                console.error("Lỗi gửi tin nhắn:", e);
+            }
+        }
+
+        function addChatMessage(senderName, msg, isMe) {
+            const container = document.getElementById('chat-messages');
+            
+            // Xóa thông báo trống nếu có
+            if (container.children.length > 0 && container.children[0].innerText === 'Trò chuyện với đối thủ') {
+                container.innerHTML = '';
             }
 
-            // Set stats
-            moves.textContent = moveCount;
-            const elapsed = Math.floor((Date.now() - gameStartTime) / 1000);
-            const minutes = Math.floor(elapsed / 60);
-            const seconds = elapsed % 60;
-            time.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-            
-            const currentRating = userData.rating || 1500;
-            const change = parseInt(ratingChange.textContent);
-            newRating.textContent = currentRating + change;
+            const msgWrapper = document.createElement('div');
+            msgWrapper.className = `chat-message ${isMe ? 'me' : 'opponent'}`;
 
-            modal.classList.add('active');
+            const senderDiv = document.createElement('div');
+            senderDiv.className = 'message-sender';
+            senderDiv.textContent = senderName;
+
+            const bubbleDiv = document.createElement('div');
+            bubbleDiv.className = 'message-bubble';
+            bubbleDiv.textContent = msg;
+
+            msgWrapper.appendChild(senderDiv);
+            msgWrapper.appendChild(bubbleDiv);
+            container.appendChild(msgWrapper);
+
+            // Cuộn xuống cuối
+            container.scrollTop = container.scrollHeight;
         }
 
-        // Listen for game events from server
-        if (gameController.networkBridge) {
-            gameController.networkBridge.on('opponent-move', (move) => {
-                gameController.makeMove(move.from, move.to);
-            });
-
-            gameController.networkBridge.on('chat-message', (data) => {
-                addChatMessage(data.sender, data.message, false);
-            });
-
-            gameController.networkBridge.on('draw-offer', () => {
-                document.getElementById('draw-modal').classList.add('active');
-            });
-
-            gameController.networkBridge.on('game-over', (data) => {
-                showResult(data.result, data.reason);
-            });
+        // Move History Update
+        if (gameController.onMoveMade) {
+             // Backup listener cũ nếu có
+             const oldListener = gameController.onMoveMade;
+             gameController.onMoveMade = (move) => {
+                 if(oldListener) oldListener(move);
+                 const list = document.getElementById('moves-list');
+                 const item = document.createElement('div');
+                 item.className = 'move-item';
+                 item.innerHTML = `<span style="color:#ffd700">${list.children.length + 1}.</span> ${move.from.row},${move.from.col} → ${move.to.row},${move.to.col}`;
+                 list.appendChild(item);
+                 list.scrollTop = list.scrollHeight;
+             }
         }
 
-        // Initialize
-        updateTurnIndicator();
+        // Khởi chạy
         startTimer();
+        updateTurnIndicator();
 
-        console.log('✅ Game page initialized');
     </script>
 </body>
 </html>

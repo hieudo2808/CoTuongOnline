@@ -162,25 +162,6 @@
             flex-direction: column;
         }
 
-        .online-stats {
-            display: flex;
-            gap: 30px;
-            margin-bottom: 25px;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 10px;
-        }
-
-        .online-stats span {
-            font-size: 14px;
-            color: #666;
-        }
-
-        .online-stats strong {
-            color: #667eea;
-            font-size: 18px;
-        }
-
         .section-header {
             display: flex;
             justify-content: space-between;
@@ -378,7 +359,6 @@
                     <h3>🎮 Chơi Game</h3>
                     <button class="menu-btn" data-action="quick-match">⚡ Tìm Trận Nhanh</button>
                     <button class="menu-btn" data-action="ranked-match">🏆 Xếp Hạng</button>
-                    <button class="menu-btn" data-action="practice">🎯 Luyện Tập</button>
                 </div>
 
                 <div class="menu-section">
@@ -388,20 +368,10 @@
                     <button class="menu-btn" data-action="profile">👤 Hồ Sơ</button>
                 </div>
 
-                <div class="menu-section">
-                    <h3>ℹ️ Khác</h3>
-                    <button class="menu-btn" data-action="rules">📖 Luật Chơi</button>
-                    <button class="menu-btn" data-action="about">💡 Giới Thiệu</button>
-                </div>
+
             </aside>
 
             <main class="lobby-main">
-                <div class="online-stats">
-                    <span>👥 Online: <strong id="online-count">-</strong></span>
-                    <span>🎮 Đang chơi: <strong id="playing-count">-</strong></span>
-                    <span>⏳ Đang tìm: <strong id="searching-count">-</strong></span>
-                </div>
-
                 <div class="section-header">
                     <h2>Tìm Đối Thủ</h2>
                     <button class="btn-primary" id="btn-find-match">⚡ Tìm Trận</button>
@@ -453,9 +423,18 @@
     </div>
 
     <script type="module">
-        // Import NetworkGameController for reconnection
         import NetworkGameController from '../src/core/networkGameController.js?v=7';
-        
+
+        // Biến cờ để kiểm tra trạng thái kết nối
+        let isConnected = false;
+
+        // Vô hiệu hóa nút tìm trận mặc định để tránh lỗi WebSocket not connected
+        const btnFindMatch = document.getElementById('btn-find-match');
+        if (btnFindMatch) {
+            btnFindMatch.disabled = true;
+            btnFindMatch.textContent = "⏳ Đang kết nối...";
+        }
+
         // Initialize lobby in async IIFE
         (async () => {
             // Check authentication
@@ -475,7 +454,7 @@
             // Get game controller - reconnect if needed
             let gameController = window.gameController;
             
-            // If no controller or network lost, reconnect using stored credentials
+            // Nếu chưa có controller hoặc mất kết nối mạng, thực hiện kết nối lại
             if (!gameController || !gameController.network) {
                 const serverInfoStr = localStorage.getItem('xiangqi_server');
                 if (!serverInfoStr) {
@@ -498,7 +477,6 @@
                     
                     // Re-authenticate with stored token
                     if (userData.token) {
-                        // Set token for authenticated requests (ensure both controller and bridge have it)
                         gameController.token = userData.token;
                         if (gameController.network) {
                             gameController.network.sessionToken = userData.token;
@@ -506,35 +484,43 @@
                     }
                     
                     window.gameController = gameController;
+                    isConnected = true; // Đánh dấu đã kết nối thành công
                     console.log('✅ Reconnected to server');
+
+                    // Bật lại nút tìm trận
+                    if (btnFindMatch) {
+                        btnFindMatch.disabled = false;
+                        btnFindMatch.textContent = "⚡ Tìm Trận";
+                    }
+
                 } catch (error) {
                     console.error('Reconnection failed:', error);
-                    showMessage('error', '❌ Mất kết nối. Vui lòng đăng nhập lại.');
-                    setTimeout(() => {
-                        window.location.href = 'login.html';
-                    }, 2000);
+                    showMessage('error', '❌ Mất kết nối. Đang thử lại...');
+                    if (btnFindMatch) btnFindMatch.textContent = "❌ Lỗi kết nối";
+                    setTimeout(() => window.location.reload(), 3000);
                     return;
+                }
+            } else {
+                // Trường hợp đã có controller (ví dụ chuyển từ trang khác sang mà không reload)
+                isConnected = true;
+                if (btnFindMatch) {
+                    btnFindMatch.disabled = false;
+                    btnFindMatch.textContent = "⚡ Tìm Trận";
                 }
             }
 
             console.log('✅ Game controller ready:', gameController);
             
-            // Make gameController available to rest of script
-            window.gameController = gameController;
-
-            // Ensure UI reacts when a match is found by the NetworkGameController
-            // This covers both cases: match found as a response to `findMatch()`
-            // or an unsolicited `match_found` event later.
+            // Setup Listeners
             gameController.onMatchFound = (payload) => {
                 try {
-                    // Normalize payload
                     let data = payload;
                     if (typeof data === 'string') {
                         try { data = JSON.parse(data); } catch (e) {}
                     }
                     handleMatchFound(data || {});
 
-                    // Auto-join game page after a short delay so UI can show feedback
+                    // Tự động chuyển trang sau khi tìm thấy trận
                     setTimeout(() => {
                         window.location.href = 'game.html';
                     }, 400);
@@ -543,214 +529,191 @@
                 }
             };
 
-        // Menu actions
-        document.querySelectorAll('.menu-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const action = btn.dataset.action;
-                handleMenuAction(action);
+            // Menu actions
+            document.querySelectorAll('.menu-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const action = btn.dataset.action;
+                    handleMenuAction(action);
+                });
             });
-        });
 
-        function handleMenuAction(action) {
-            switch(action) {
-                case 'quick-match':
-                case 'ranked-match':
-                    document.getElementById('btn-find-match').click();
-                    break;
-                case 'practice':
-                    window.location.href = '../app.html';
-                    break;
-                case 'leaderboard':
-                    loadLeaderboard();
-                    break;
-                case 'history':
-                    showMessage('info', 'Chức năng đang phát triển');
-                    break;
-                case 'rules':
-                    window.open('../public/rule.html', '_blank');
-                    break;
-                case 'about':
-                    showMessage('info', 'Cờ Tướng Online v1.0 - Developed with ❤️');
-                    break;
-                default:
-                    showMessage('info', 'Chức năng đang phát triển');
+            // Find match button - SỬA LỖI CLICK KHI CHƯA KẾT NỐI
+            if (btnFindMatch) {
+                btnFindMatch.addEventListener('click', async () => {
+                    // Thêm check kỹ: Nếu chưa kết nối hoặc không có network thì chặn luôn
+                    if (!isConnected || !window.gameController?.network) {
+                        showMessage('error', 'Chưa kết nối đến máy chủ! Vui lòng đợi...');
+                        return;
+                    }
+
+                    const searchingDiv = document.getElementById('searching-indicator');
+                    btnFindMatch.disabled = true;
+                    searchingDiv.classList.add('active');
+
+                    try {
+                        // Mark player as ready
+                        try {
+                            await gameController.setReady(true);
+                        } catch (e) {
+                            console.warn('setReady failed:', e.message || e);
+                        }
+
+                        // Attempt to find an opponent
+                        try {
+                            const response = await gameController.findMatch();
+                            if (response && response.payload) {
+                                let payload = response.payload;
+                                if (typeof payload === 'string') {
+                                    try { payload = JSON.parse(payload); } catch (e) {}
+                                }
+                                if (payload && (payload.match_id || payload.matchId)) {
+                                    handleMatchFound(payload);
+                                    return;
+                                }
+                            }
+                            showMessage('info', '🔍 Đang tìm đối thủ...');
+                        } catch (err) {
+                            if (err && err.message && err.message.toLowerCase().includes('no opponent')) {
+                                showMessage('info', '🔍 Đang tìm đối thủ...');
+                            } else {
+                                throw err;
+                            }
+                        }
+                    } catch (error) {
+                        showMessage('error', `❌ Lỗi: ${error.message}`);
+                        searchingDiv.classList.remove('active');
+                        btnFindMatch.disabled = false;
+                    }
+                });
             }
-        }
 
-        // Find match button
-        document.getElementById('btn-find-match').addEventListener('click', async () => {
-            const searchingDiv = document.getElementById('searching-indicator');
-            const btnFind = document.getElementById('btn-find-match');
+            // Cancel search button
+            document.getElementById('btn-cancel-search').addEventListener('click', async () => {
+                document.getElementById('searching-indicator').classList.remove('active');
+                if (btnFindMatch) btnFindMatch.disabled = false;
+                showMessage('info', 'Đã hủy tìm kiếm');
 
-            btnFind.disabled = true;
-            searchingDiv.classList.add('active');
-
-            try {
-                if (!gameController || !gameController.network) {
-                    throw new Error('Chưa kết nối server');
-                }
-
-                // Mark player as ready so lobby can match them later
                 try {
-                    await gameController.setReady(true);
+                    if (gameController && gameController.network) {
+                        await gameController.setReady(false);
+                    }
                 } catch (e) {
-                    // Non-fatal: continue to attempt findMatch
-                    console.warn('setReady failed:', e.message || e);
+                    console.warn('Failed to unset ready:', e.message || e);
                 }
-
-                // Attempt to find an opponent immediately
-                try {
-                    const response = await gameController.findMatch();
-
-                    // If server returns matched payload, handle it
-                    if (response && response.payload) {
-                        // Try to normalize payload (could be string or object)
-                        let payload = response.payload;
-                        if (typeof payload === 'string') {
-                            try { payload = JSON.parse(payload); } catch (e) {}
-                        }
-
-                        // If payload contains match info, handle it
-                        if (payload && (payload.match_id || payload.matchId)) {
-                            handleMatchFound(payload);
-                            return;
-                        }
-                    }
-
-                    // If no immediate match, show searching message and wait for server 'match_found' event
-                    showMessage('info', '🔍 Đang tìm đối thủ...');
-                } catch (err) {
-                    // If server explicitly says no opponent found, treat as searching (not fatal)
-                    if (err && err.message && err.message.toLowerCase().includes('no opponent')) {
-                        showMessage('info', '🔍 Đang tìm đối thủ...');
-                        // keep UI in searching state; server should notify with 'match_found' when available
-                    } else {
-                        throw err;
-                    }
-                }
-            } catch (error) {
-                showMessage('error', `❌ Lỗi: ${error.message}`);
-                searchingDiv.classList.remove('active');
-                btnFind.disabled = false;
-            }
-        });
-
-        // Cancel search button
-        document.getElementById('btn-cancel-search').addEventListener('click', async () => {
-            document.getElementById('searching-indicator').classList.remove('active');
-            document.getElementById('btn-find-match').disabled = false;
-            showMessage('info', 'Đã hủy tìm kiếm');
-
-            // Unset ready state on server
-            try {
-                if (gameController && gameController.network) {
-                    await gameController.setReady(false);
-                }
-            } catch (e) {
-                console.warn('Failed to unset ready:', e.message || e);
-            }
-        });
-
-        // Handle match found
-        function handleMatchFound(matchData) {
-            const searchingDiv = document.getElementById('searching-indicator');
-            const matchFoundDiv = document.getElementById('match-found');
-            
-            searchingDiv.classList.remove('active');
-            matchFoundDiv.classList.add('active');
-            
-            document.getElementById('opponent-info').innerHTML = 
-                `Đối thủ: <strong>${matchData.opponent || 'Unknown'}</strong> (Rating: ${matchData.opponent_rating || 1500})`;
-            
-            // Store match data
-            localStorage.setItem('current_match', JSON.stringify(matchData));
-        }
-
-        // Start game button
-        document.getElementById('btn-start-game').addEventListener('click', () => {
-            window.location.href = 'game.html';
-        });
-
-        // Logout button
-        document.getElementById('btn-logout').addEventListener('click', () => {
-            if (confirm('Bạn có chắc muốn đăng xuất?')) {
-                localStorage.removeItem('xiangqi_user');
-                localStorage.removeItem('current_match');
-                window.location.href = 'login.html';
-            }
-        });
-
-        // Refresh button
-        document.getElementById('btn-refresh').addEventListener('click', () => {
-            location.reload();
-        });
-
-        // Load leaderboard
-        async function loadLeaderboard() {
-            try {
-                if (gameController && gameController.network) {
-                    const leaderboard = await gameController.getLeaderboard();
-                    // getLeaderboard() already returns the array directly
-                    displayLeaderboard(leaderboard || []);
-                } else {
-                    console.warn('⚠️ gameController or network not ready');
-                }
-            } catch (error) {
-                console.error('Failed to load leaderboard:', error);
-            }
-        }
-
-        function displayLeaderboard(leaderboard) {
-            const tbody = document.getElementById('leaderboard-body');
-            tbody.innerHTML = '';
-            
-            leaderboard.slice(0, 5).forEach((player, index) => {
-                const rank = index + 1;
-                let rankBadge = `<span class="rank-badge">${rank}</span>`;
-                
-                if (rank === 1) rankBadge = `<span class="rank-badge gold">👑</span>`;
-                else if (rank === 2) rankBadge = `<span class="rank-badge silver">🥈</span>`;
-                else if (rank === 3) rankBadge = `<span class="rank-badge bronze">🥉</span>`;
-                
-                const winRate = ((player.wins / (player.wins + player.losses + player.draws)) * 100).toFixed(1);
-                
-                tbody.innerHTML += `
-                    <tr>
-                        <td>${rankBadge}</td>
-                        <td><strong>${player.username}</strong></td>
-                        <td><strong>${player.rating}</strong></td>
-                        <td>${player.wins + player.losses + player.draws}</td>
-                        <td>${winRate}%</td>
-                    </tr>
-                `;
             });
-        }
 
-        // Show message
-        function showMessage(type, text) {
-            const msgDiv = document.getElementById('status-message');
-            msgDiv.className = `status-message ${type}`;
-            msgDiv.textContent = text;
-            msgDiv.style.display = 'block';
+            // Start game button
+            document.getElementById('btn-start-game').addEventListener('click', () => {
+                window.location.href = 'game.html';
+            });
+
+            // Logout button
+            document.getElementById('btn-logout').addEventListener('click', () => {
+                if (confirm('Bạn có chắc muốn đăng xuất?')) {
+                    localStorage.removeItem('xiangqi_user');
+                    localStorage.removeItem('current_match');
+                    window.location.href = 'login.html';
+                }
+            });
+
+            // Refresh button
+            document.getElementById('btn-refresh').addEventListener('click', () => {
+                location.reload();
+            });
+
+            // Helper functions
+            function handleMenuAction(action) {
+                switch(action) {
+                    case 'quick-match':
+                    case 'ranked-match':
+                        if (btnFindMatch) btnFindMatch.click();
+                        break;
+                    case 'leaderboard':
+                        loadLeaderboard();
+                        break;
+                    case 'history':
+                        showMessage('info', 'Chức năng đang phát triển');
+                        break;
+                    default:
+                        showMessage('info', 'Chức năng đang phát triển');
+                }
+            }
+
+            function handleMatchFound(matchData) {
+                const searchingDiv = document.getElementById('searching-indicator');
+                const matchFoundDiv = document.getElementById('match-found');
+                
+                searchingDiv.classList.remove('active');
+                matchFoundDiv.classList.add('active');
+                
+                // Hiển thị thông tin đối thủ (đã xử lý flatten data ở controller)
+                const oppName = matchData.opponent_name || matchData.opponent || 'Unknown';
+                const oppRating = matchData.opponent_rating || 1500;
+                
+                document.getElementById('opponent-info').innerHTML = 
+                    `Đối thủ: <strong>${oppName}</strong> (Rating: ${oppRating})`;
+                
+                // Store match data
+                localStorage.setItem('current_match', JSON.stringify(matchData));
+            }
+
+            async function loadLeaderboard() {
+                try {
+                    if (gameController && gameController.network) {
+                        const leaderboard = await gameController.getLeaderboard();
+                        displayLeaderboard(leaderboard || []);
+                    } else {
+                        console.warn('⚠️ gameController or network not ready');
+                    }
+                } catch (error) {
+                    console.error('Failed to load leaderboard:', error);
+                }
+            }
+
+            function displayLeaderboard(leaderboard) {
+                const tbody = document.getElementById('leaderboard-body');
+                if (!tbody) return;
+                tbody.innerHTML = '';
+                
+                leaderboard.slice(0, 5).forEach((player, index) => {
+                    const rank = index + 1;
+                    let rankBadge = `<span class="rank-badge">${rank}</span>`;
+                    
+                    if (rank === 1) rankBadge = `<span class="rank-badge gold">👑</span>`;
+                    else if (rank === 2) rankBadge = `<span class="rank-badge silver">🥈</span>`;
+                    else if (rank === 3) rankBadge = `<span class="rank-badge bronze">🥉</span>`;
+                    
+                    const totalGames = player.wins + player.losses + player.draws;
+                    const winRate = totalGames > 0 ? ((player.wins / totalGames) * 100).toFixed(1) : "0.0";
+                    
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${rankBadge}</td>
+                            <td><strong>${player.username}</strong></td>
+                            <td><strong>${player.rating}</strong></td>
+                            <td>${totalGames}</td>
+                            <td>${winRate}%</td>
+                        </tr>
+                    `;
+                });
+            }
+
+            function showMessage(type, text) {
+                const msgDiv = document.getElementById('status-message');
+                if (msgDiv) {
+                    msgDiv.className = `status-message ${type}`;
+                    msgDiv.textContent = text;
+                    msgDiv.style.display = 'block';
+                    
+                    setTimeout(() => {
+                        msgDiv.style.display = 'none';
+                    }, 5000);
+                }
+            }
+
+            // Load initial leaderboard
+            setTimeout(loadLeaderboard, 500);
             
-            setTimeout(() => {
-                msgDiv.style.display = 'none';
-            }, 5000);
-        }
-
-        // Simulate online stats (replace with real data from server)
-        function updateStats() {
-            document.getElementById('online-count').textContent = Math.floor(Math.random() * 100) + 50;
-            document.getElementById('playing-count').textContent = Math.floor(Math.random() * 40) + 10;
-            document.getElementById('searching-count').textContent = Math.floor(Math.random() * 20);
-        }
-
-        updateStats();
-        setInterval(updateStats, 10000);
-
-        // Load initial leaderboard
-        setTimeout(loadLeaderboard, 500);
-        
         })(); // Close async IIFE
     </script>
 </body>

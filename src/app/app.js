@@ -508,12 +508,6 @@ class XiangqiApp {
         }, 5000);
     }
 
-    updateOnlineStats() {
-        // TODO: Get from server
-        document.getElementById("online-count").textContent = "42";
-        document.getElementById("playing-count").textContent = "18";
-    }
-
     loadRoomsList() {
         const container = document.getElementById("rooms-container");
 
@@ -560,9 +554,6 @@ class XiangqiApp {
             case "history":
                 this.showHistory();
                 break;
-            case "practice":
-                this.handlePractice();
-                break;
         }
     }
 
@@ -600,29 +591,7 @@ class XiangqiApp {
         alert("Tính năng đang phát triển: Thách đấu bạn bè");
     }
 
-    handlePractice() {
-        // Show offline game screen first
-        this.showScreen("screen-game");
 
-        // Hide network controls
-        const resignBtn = document.getElementById("btn-resign");
-        const drawBtn = document.getElementById("btn-draw-offer");
-        if (resignBtn) resignBtn.style.display = "none";
-        if (drawBtn) drawBtn.style.display = "none";
-
-        // Create offline game controller after screen is visible
-        setTimeout(() => {
-            const needsInit = !this.gameController || 
-                !this.gameController.ui || 
-                !this.gameController.ui.isInitialized;
-            
-            if (needsInit) {
-                this.gameController = new GameController("xiangqi-board");
-            }
-        }, 50);
-
-        alert("Chế độ luyện tập offline");
-    }
 
     // ===== ROOM =====
     handleLeaveRoom() {

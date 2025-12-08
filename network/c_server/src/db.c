@@ -601,7 +601,7 @@ bool db_get_username(int user_id, char* out_username, size_t username_size) {
     SQLLEN indicator;
     char username[64] = {0};
 
-    const char* sql = "SELECT username FROM Users WHERE id = ?";
+    const char* sql = "SELECT username FROM Users WHERE user_id = ?";
 
     ret = SQLAllocHandle(SQL_HANDLE_STMT, g_db_conn, &stmt);
     if (ret != SQL_SUCCESS) {

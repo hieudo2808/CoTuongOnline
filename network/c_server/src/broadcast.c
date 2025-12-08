@@ -19,10 +19,10 @@ bool send_to_client(server_t* server, int client_fd, const char* message) {
         return false;
     }
 
-    // Find client
+    // Find client - iterate through MAX_CLIENTS and check for NULL
     client_t* client = NULL;
-    for (int i = 0; i < server->client_count; i++) {
-        if (server->clients[i]->fd == client_fd) {
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (server->clients[i] && server->clients[i]->fd == client_fd) {
             client = server->clients[i];
             break;
         }
@@ -55,9 +55,9 @@ bool send_to_user(server_t* server, int user_id, const char* message) {
         return false;
     }
 
-    // Find client with this user_id
-    for (int i = 0; i < server->client_count; i++) {
-        if (server->clients[i]->user_id == user_id) {
+    // Find client with this user_id - check for NULL
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (server->clients[i] && server->clients[i]->user_id == user_id) {
             return send_to_client(server, server->clients[i]->fd, message);
         }
     }
@@ -65,9 +65,11 @@ bool send_to_user(server_t* server, int user_id, const char* message) {
     fprintf(stderr, "[Broadcast] User %d not connected\n", user_id);
     // Print currently connected users (user_id -> fd) to help debugging
     fprintf(stderr, "[Broadcast] Connected clients (user_id:fd):");
-    for (int i = 0; i < server->client_count; i++) {
+    for (int i = 0; i < MAX_CLIENTS; i++) {
         client_t* c = server->clients[i];
-        fprintf(stderr, " %d:%d", c->user_id, c->fd);
+        if (c) {
+            fprintf(stderr, " %d:%d", c->user_id, c->fd);
+        }
     }
     fprintf(stderr, "\n");
     return false;
@@ -76,8 +78,8 @@ bool send_to_user(server_t* server, int user_id, const char* message) {
 // Return true if a user_id currently has a connected client mapping
 bool is_user_connected(server_t* server, int user_id) {
     if (!server || user_id <= 0) return false;
-    for (int i = 0; i < server->client_count; i++) {
-        if (server->clients[i]->user_id == user_id) return true;
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (server->clients[i] && server->clients[i]->user_id == user_id) return true;
     }
     return false;
 }
@@ -129,8 +131,8 @@ void broadcast_to_all(server_t* server, const char* message) {
     }
 
     int sent_count = 0;
-    for (int i = 0; i < server->client_count; i++) {
-        if (send_to_client(server, server->clients[i]->fd, message)) {
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (server->clients[i] && send_to_client(server, server->clients[i]->fd, message)) {
             sent_count++;
         }
     }
