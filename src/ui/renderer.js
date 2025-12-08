@@ -5,8 +5,6 @@ export class UI {
         this.boardContainer = boardContainerId ? document.getElementById(boardContainerId) : null;
         
         this.elements = {
-            checkText: null,
-            beginText: null,
             turnText: null,
             movesList: null,
             chessboardTable: null
@@ -15,7 +13,6 @@ export class UI {
         this.buttons = { newGame: null, resign: null, draw: null };
         
         if (!this.boardContainer) {
-            // Lazy mode
             this.isInitialized = false;
             return;
         }
@@ -47,19 +44,12 @@ export class UI {
         
         // Wrapper chính
         const boardWrapper = document.createElement('div');
-        boardWrapper.className = 'board-wrapper'; // Đổi tên class để tránh xung đột css cũ
+        boardWrapper.className = 'board-wrapper';
         
-        // 1. Lớp hình ảnh bàn cờ (Background Grid)
+        // 1. Lớp hình ảnh bàn cờ (Grid)
         const boardShape = document.createElement('div');
         boardShape.className = 'xiangqi-grid';
         
-        // Vẽ 9 dòng ngang, 8 dòng dọc (tạo ra 9x10 giao điểm)
-        // Cách vẽ mới: Sử dụng CSS Grid/Flex để vẽ đường kẻ thay vì Table để chính xác hơn
-        let gridHtml = '';
-        
-        // Vẽ 4 ô vuông lưới (Sở hà hán giới ở giữa)
-        // Đây là cách đơn giản: Dùng ảnh nền hoặc CSS border
-        // Ở đây ta dùng cấu trúc Table cũ cho Grid nhưng fix CSS cứng
         const gridTable = document.createElement('table');
         gridTable.className = 'grid-table';
         for(let r=0; r<9; r++) {
@@ -78,25 +68,22 @@ export class UI {
         riverText.textContent = '楚 河 漢 界';
         boardShape.appendChild(riverText);
 
-        // 2. Lớp chứa quân cờ (Piece Overlay) - Quan trọng: Phải đè đúng lên giao điểm
+        // 2. Lớp chứa quân cờ (Overlay)
         const chessboard = document.createElement('div');
         chessboard.id = 'chessboardContainer';
         chessboard.className = 'piece-layer';
         
-        // Tạo 90 điểm đặt quân (10 hàng x 9 cột)
         for (let r = 0; r < 10; r++) {
             for (let c = 0; c < 9; c++) {
                 const spot = document.createElement('div');
                 spot.className = 'piece-spot';
                 spot.setAttribute('data-x', r);
                 spot.setAttribute('data-y', c);
-                // Spot này sẽ chứa quân cờ (div.pieces)
                 chessboard.appendChild(spot);
             }
         }
         
-        // Lưu tham chiếu để render quân
-        this.elements.chessboardTable = chessboard; // Giữ tên cũ để tương thích controller
+        this.elements.chessboardTable = chessboard;
         
         boardWrapper.appendChild(boardShape);
         boardWrapper.appendChild(chessboard);
@@ -115,164 +102,187 @@ export class UI {
     
     injectStyles() {
         if (document.getElementById('xiangqi-renderer-styles')) return;
+
+        const CELL_SIZE = 67; // Kích thước 1 ô vuông (px)
+
+        const PADDING = Math.round(CELL_SIZE * 0.66);      // Lề bàn cờ
+        const PIECE_SIZE = Math.round(CELL_SIZE * 0.88);   // Kích thước quân cờ
+        const FONT_SIZE = Math.round(PIECE_SIZE * 0.52);   // Cỡ chữ quân cờ
+        const RIVER_FONT_SIZE = Math.round(CELL_SIZE * 0.64); // Cỡ chữ sông
+        
+        // Kích thước lưới kẻ (Grid): 8 ô ngang x 9 ô dọc
+        const GRID_WIDTH = 8 * CELL_SIZE; 
+        const GRID_HEIGHT = 9 * CELL_SIZE;
+        
+        // Kích thước tổng thể Wrapper = Grid + Padding 2 bên
+        const WRAPPER_WIDTH = GRID_WIDTH + (PADDING * 2);
+        const WRAPPER_HEIGHT = GRID_HEIGHT + (PADDING * 2);
+
+        // Kích thước Grid Container (Thêm 2px border để khớp)
+        const GRID_BOX_WIDTH = GRID_WIDTH + 2; 
+        const GRID_BOX_HEIGHT = GRID_HEIGHT + 2;
+
+        // Kích thước Lớp phủ quân (Overlay): 9 cột x 10 dòng giao điểm
+        const LAYER_WIDTH = 9 * CELL_SIZE;
+        const LAYER_HEIGHT = 10 * CELL_SIZE;
+
+        const LAYER_OFFSET = PADDING - (CELL_SIZE / 2);
+
         const style = document.createElement('style');
         style.id = 'xiangqi-renderer-styles';
         style.textContent = `
+            /* Reset container cũ */
+            .game-container .board-container, 
+            #xiangqi-board {
+                width: auto !important; height: auto !important;
+                padding: 0 !important; margin: 0 !important;
+                background: transparent !important; border: none !important;
+                box-shadow: none !important; display: block !important;
+            }
+
             /* Container chính */
             .board-wrapper {
                 position: relative;
-                width: 520px; /* 8 cols * 60px + padding */
-                height: 580px; /* 9 rows * 60px + padding */
+                width: ${WRAPPER_WIDTH}px;
+                height: ${WRAPPER_HEIGHT}px;
                 background: #d4a574;
-                margin: 20px auto;
-                padding: 40px; /* Padding tạo lề bàn cờ */
-                border-radius: 8px;
-                box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+                margin: 0 auto;
+                border-radius: 12px;
+                box-shadow: 0 15px 40px rgba(0,0,0,0.5);
                 user-select: none;
-                transition: transform 0.6s ease-in-out;
+                box-sizing: content-box;
+                transition: transform 0.6s ease;
             }
 
-            /* Lưới bàn cờ (Nằm dưới) */
+            /* Lưới kẻ */
             .xiangqi-grid {
-                position: relative;
-                width: 100%;
-                height: 100%;
+                position: absolute;
+                top: ${PADDING}px;
+                left: ${PADDING}px;
+                width: ${GRID_BOX_WIDTH}px;
+                height: ${GRID_BOX_HEIGHT}px;
                 border: 2px solid #5d4037;
+                z-index: 1;
+                box-sizing: border-box;
             }
 
-            .grid-table {
-                width: 100%;
-                height: 100%;
-                border-collapse: collapse;
-            }
-
+            .grid-table { width: 100%; height: 100%; border-collapse: collapse; }
             .grid-table td {
                 border: 1px solid #5d4037;
-                width: 12.5%; /* 100% / 8 ô */
-                height: 11.1%; /* 100% / 9 ô */
+                width: ${CELL_SIZE}px;
+                height: ${CELL_SIZE}px;
+                padding: 0; box-sizing: border-box;
             }
-            
             .grid-table .river-cell {
-                border-left: 1px solid #5d4037;
-                border-right: 1px solid #5d4037;
-                border-top: none;
-                border-bottom: none;
+                border-left: 1px solid #5d4037; border-right: 1px solid #5d4037;
+                border-top: none; border-bottom: none;
             }
 
             .river-text {
                 position: absolute;
-                top: 50%;
-                left: 0;
-                width: 100%;
+                top: 50%; left: 0; width: 100%;
                 transform: translateY(-50%);
                 text-align: center;
-                font-size: 32px;
-                color: rgba(93, 64, 55, 0.3);
+                font-size: ${RIVER_FONT_SIZE}px;
+                font-family: "KaiTi", "SimSun", serif;
+                color: rgba(93, 64, 55, 0.4);
+                pointer-events: none;
+                letter-spacing: ${Math.round(CELL_SIZE * 0.6)}px;
+                text-indent: ${Math.round(CELL_SIZE * 0.6)}px;
+            }
+
+            /* Lớp phủ chứa quân (Overlay) */
+            .piece-layer {
+                position: absolute;
+                top: ${LAYER_OFFSET}px;
+                left: ${LAYER_OFFSET}px;
+                width: ${LAYER_WIDTH}px; 
+                height: ${LAYER_HEIGHT}px;
+                display: grid;
+                grid-template-columns: repeat(9, ${CELL_SIZE}px);
+                grid-template-rows: repeat(10, ${CELL_SIZE}px);
+                z-index: 10;
                 pointer-events: none;
             }
 
-            /* Lớp chứa quân cờ (Nằm đè lên lưới) */
-            .piece-layer {
-                position: absolute;
-                /* Mở rộng ra ngoài lưới để tâm quân cờ trùng giao điểm */
-                top: 10px; /* 40px padding - 30px (nửa quân cờ) */
-                left: 10px;
-                width: 580px;
-                height: 640px;
-                display: grid;
-                grid-template-columns: repeat(9, 1fr); /* 9 cột giao điểm */
-                grid-template-rows: repeat(10, 1fr);   /* 10 hàng giao điểm */
-                z-index: 10;
-                pointer-events: none; /* Để click xuyên qua nếu cần, nhưng piece sẽ có pointer-events auto */
-            }
-
-            /* Điểm neo quân cờ */
             .piece-spot {
-                width: 100%;
-                height: 100%;
+                width: ${CELL_SIZE}px;
+                height: ${CELL_SIZE}px;
                 display: flex;
                 justify-content: center;
                 align-items: center;
-                pointer-events: auto; /* Bắt sự kiện click */
+                pointer-events: auto;
                 cursor: pointer;
             }
 
             /* Quân cờ */
             .pieces {
-                width: 56px;
-                height: 56px;
+                width: ${PIECE_SIZE}px;
+                height: ${PIECE_SIZE}px;
                 border-radius: 50%;
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 28px;
+                font-size: ${FONT_SIZE}px;
                 font-weight: bold;
                 font-family: "KaiTi", "SimSun", serif;
-                box-shadow: 2px 2px 5px rgba(0,0,0,0.4);
+                
+                position: relative !important; 
+                top: auto !important; left: auto !important; margin: 0 !important;
+                
+                box-shadow: 3px 5px 8px rgba(0,0,0,0.4);
                 transition: transform 0.2s, box-shadow 0.2s;
-                position: relative;
                 z-index: 20;
+                background: #fdf5e6;
             }
 
             .pieces:hover {
-                transform: scale(1.15) !important;
+                transform: scale(1.15);
                 z-index: 30;
                 cursor: pointer;
+                box-shadow: 0 0 15px rgba(255, 215, 0, 0.8);
             }
 
             .pieces.red {
-                background: #fdf5e6;
                 color: #cc0000;
-                border: 4px solid #cc0000;
+                border: 3px solid #cc0000;
+                box-shadow: inset 0 0 8px rgba(204,0,0,0.1), 2px 4px 6px rgba(0,0,0,0.3);
             }
 
             .pieces.black {
-                background: #fdf5e6;
                 color: #000;
-                border: 4px solid #000;
+                border: 3px solid #000;
+                box-shadow: inset 0 0 8px rgba(0,0,0,0.1), 2px 4px 6px rgba(0,0,0,0.3);
             }
 
             .pieces.selected {
-                background-color: #81c784 !important;
-                box-shadow: 0 0 15px #81c784;
+                background-color: #a5d6a7 !important;
+                box-shadow: 0 0 0 4px #4caf50, 0 5px 15px rgba(0,0,0,0.4);
                 transform: scale(1.15);
             }
 
-            /* --- Xoay bàn cờ --- */
-            .board-wrapper.flipped {
-                transform: rotate(180deg);
-            }
-
-            /* Xoay ngược quân cờ để nó đứng thẳng khi bàn cờ xoay */
-            .board-wrapper.flipped .pieces {
-                transform: rotate(180deg);
-            }
+            /* Xoay bàn cờ */
+            .board-wrapper.flipped { transform: rotate(180deg); }
+            .board-wrapper.flipped .pieces { transform: rotate(180deg); }
+            .board-wrapper.flipped .river-text { transform: translateY(-50%) rotate(180deg); }
         `;
         document.head.appendChild(style);
     }
 
-    // --- Helper Methods ---
-
     createPiece(x, y, icon, color) {
         if (!this.isInitialized) return null;
-        
-        // Tìm đúng spot theo x (row) và y (col)
-        // piece-layer là Grid container, children theo thứ tự row-major
-        // index = x * 9 + y
+        // index = x * 9 + y (hàng * số cột + cột)
         const index = x * 9 + y;
         const spot = this.elements.chessboardTable.children[index];
         
-        if (!spot) {
-            console.error(`Invalid coordinates: ${x}, ${y}`);
-            return null;
-        }
+        if (!spot) return null;
         
         const div = document.createElement('div');
         div.setAttribute('data-color', color);
         div.classList.add('pieces', color);
         div.textContent = icon;
         
-        spot.innerHTML = ''; // Xóa quân cũ nếu có
+        spot.innerHTML = '';
         spot.appendChild(div);
         return div;
     }
@@ -297,7 +307,6 @@ export class UI {
         }
     }
     
-    // Giữ lại các hàm cũ nhưng update DOM
     updateTurn(turn) {
         if (this.elements.turnText) {
             const isRed = turn === 'red';
@@ -307,10 +316,6 @@ export class UI {
         }
     }
     
-    updateCheckStatus(msg) { /* ... */ }
-    showWinner(winner) { alert(winner + " thắng!"); }
-    
-    // Support flip
     flipBoard(isFlipped) {
         const wrapper = this.boardContainer.querySelector('.board-wrapper');
         if (wrapper) {

@@ -126,9 +126,6 @@ export class GameController {
         if (this.ui.buttons.resign) {
             this.ui.buttons.resign.addEventListener("click", () => this.handleResign());
         }
-        if (this.ui.buttons.draw) {
-            this.ui.buttons.draw.addEventListener("click", () => this.handleDraw());
-        }
 
         // 2. Gán sự kiện Click cho Bàn cờ (Sử dụng Event Delegation)
         const boardContainer = document.getElementById(this.boardContainerId);
@@ -168,13 +165,7 @@ export class GameController {
     }
 
     handleResign() {
-        const winner = this.chessboard.turn === "red" ? "Black" : "Red";
-        this.ui.showWinner(winner);
         this.chessboard.status = false;
-    }
-
-    handleDraw() {
-        alert("Request draw");
     }
 
     handleBoardClick(event) {
@@ -266,16 +257,6 @@ export class GameController {
         target.appendChild(clickedPiece);
         clickedPiece.style.backgroundColor = "#FAF0E6";
 
-        // Record move
-        this.recordMove(
-            curRow,
-            curCol,
-            newRow,
-            newCol,
-            clickedPiece,
-            targetPiece
-        );
-
         // Switch turn
         this.switchTurn();
 
@@ -292,6 +273,10 @@ export class GameController {
 
         // Emit move-made event
         this.emit('move-made', moveInfo);
+
+        if (this.onMoveMade) {
+            this.onMoveMade(moveInfo);
+        }
         
         return true;
     }
@@ -314,85 +299,14 @@ export class GameController {
         if (!this.ui) return;
 
         if (checkRed || checkBlack) {
-            this.ui.updateCheckStatus("Check!");
             const isCheckmate = this.chessboard.isCheckMate(
                 this.chessboard.turn,
                 this.chessboard.board
             );
 
             if (isCheckmate) {
-                const winner = this.chessboard.turn === "red" ? "Black" : "Red";
-                this.ui.updateCheckStatus("Checkmate!");
-                this.ui.showWinner(winner);
                 this.chessboard.status = false;
             }
-        } else {
-            this.ui.updateCheckStatus("");
-        }
-    }
-
-    recordMove(curRow, curCol, newRow, newCol, clickedPiece, targetPiece) {
-        const moveTable = document.getElementById("movesRecords");
-        const record = new Record(
-            curRow,
-            curCol,
-            newRow,
-            newCol,
-            clickedPiece,
-            targetPiece
-        );
-        this.stack.push(record);
-
-        // Skip DOM updates if table doesn't exist (e.g., in network game mode)
-        if (!moveTable) {
-            return;
-        }
-
-        if (this.chessboard.turn === "red") {
-            this.chessboard.turnCnt++;
-            const moveRow = moveTable.insertRow();
-            moveRow.setAttribute("class", "moveRow");
-            moveRow.setAttribute("data-turn", this.chessboard.turnCnt);
-
-            const turnContainer = document.createElement("td");
-            turnContainer.setAttribute("class", "turnCnt");
-            turnContainer.innerHTML = this.chessboard.turnCnt;
-
-            const redMoveContainer = document.createElement("td");
-            redMoveContainer.setAttribute("class", "redMove");
-
-            const blackMoveContainer = document.createElement("td");
-            blackMoveContainer.setAttribute("class", "blackMove");
-
-            moveRow.appendChild(turnContainer);
-            moveRow.appendChild(redMoveContainer);
-            moveRow.appendChild(blackMoveContainer);
-
-            // Generate notation
-            const notation = MoveNotation.generateRedNotation(
-                this.chessboard.curPiece,
-                curRow,
-                curCol,
-                newRow,
-                newCol
-            );
-            redMoveContainer.innerHTML = notation;
-        } else {
-            const moveRow = document.querySelector(
-                `[data-turn="${this.chessboard.turnCnt}"]`
-            );
-            const blackMoveContainer =
-                moveRow.getElementsByClassName("blackMove")[0];
-
-            // Generate notation
-            const notation = MoveNotation.generateBlackNotation(
-                this.chessboard.curPiece,
-                curRow,
-                curCol,
-                newRow,
-                newCol
-            );
-            blackMoveContainer.innerHTML = notation;
         }
     }
 
