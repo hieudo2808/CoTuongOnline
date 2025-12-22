@@ -6,6 +6,7 @@
 
 #define MAX_MATCHES 500
 #define MAX_MOVES_PER_MATCH 300
+#define MAX_SPECTATORS_PER_MATCH 50
 
 typedef struct {
     int move_id;
@@ -36,6 +37,9 @@ typedef struct {
     bool active;
     char result[16];      // "red_wins", "black_wins", "draw", "ongoing"
     char end_reason[32];  // "checkmate", "resign", "timeout", etc.
+    // Spectators
+    int spectator_ids[MAX_SPECTATORS_PER_MATCH];
+    int spectator_count;
 } match_t;
 
 // Match management
@@ -58,5 +62,28 @@ bool match_is_checkmate(match_t* match);
 // Move validation (basic sanity checks)
 bool is_valid_position(int row, int col);
 bool is_correct_turn(match_t* match, int user_id);
+
+// Spectator functions
+bool match_add_spectator(const char* match_id, int user_id);
+bool match_remove_spectator(const char* match_id, int user_id);
+bool match_is_spectator(const match_t* match, int user_id);
+char* match_get_live_matches_json(void);
+
+// Timer functions
+bool match_update_timer(const char* match_id);
+bool match_check_timeout(const char* match_id);
+char* match_get_timer_json(const char* match_id);
+void match_check_all_timeouts(void);
+
+// Timeout info for broadcasting
+typedef struct {
+    char match_id[32];
+    char result[16];
+    int red_user_id;
+    int black_user_id;
+} timeout_info_t;
+
+// Get timeouts that need broadcasting (returns count, fills array)
+int match_get_pending_timeouts(timeout_info_t* timeouts, int max_count);
 
 #endif  // MATCH_H

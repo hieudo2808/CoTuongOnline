@@ -41,6 +41,10 @@ bool db_save_match(const char* match_id, int red_user_id, int black_user_id,
                    const char* result, const char* moves_json,
                    const char* started_at, const char* ended_at);
 bool db_get_match(const char* match_id, char* out_json, size_t json_size);
+bool db_get_match_history(int user_id, int limit, int offset, char* out_json, size_t json_size);
+
+// Profile - get detailed user stats
+bool db_get_user_profile(int user_id, char* out_json, size_t json_size);
 
 // Leaderboard
 bool db_get_leaderboard(int limit, int offset, char* out_json,

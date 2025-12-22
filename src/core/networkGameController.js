@@ -38,6 +38,7 @@ class NetworkGameController extends GameController {
         this.myColor = null; // 'red' or 'black'
         this.isOnlineMode = false;
         this.isMyTurn = false;
+        this.isSpectator = false; // Spectator mode flag
         this.pendingBoardContainerId = boardContainerId;
 
         // Callbacks
@@ -234,6 +235,12 @@ class NetworkGameController extends GameController {
         // In online mode, only allow moves if it's our turn
         if (this.isOnlineMode && !this.isMyTurn) {
             console.warn("[NetworkGame] Not your turn!");
+            return false;
+        }
+
+        // Spectators cannot make moves
+        if (this.isSpectator) {
+            console.warn("[NetworkGame] Spectators cannot move pieces");
             return false;
         }
 

@@ -331,6 +331,509 @@
             background: #d1ecf1;
             color: #0c5460;
         }
+
+        /* Modal styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            animation: modalSlideIn 0.3s ease;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            color: #333;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #999;
+            transition: color 0.2s;
+        }
+
+        .modal-close:hover {
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input[type="text"],
+        .form-group input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+            box-sizing: border-box;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-group .checkbox-label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+        }
+
+        .form-group input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+        }
+
+        .btn-secondary {
+            padding: 10px 20px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+
+        /* Room list styles */
+        .room-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .room-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            transition: all 0.2s;
+        }
+
+        .room-item:hover {
+            border-color: #667eea;
+            background: #f8f9fa;
+        }
+
+        .room-info {
+            flex: 1;
+        }
+
+        .room-host {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .room-details {
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            gap: 15px;
+        }
+
+        .room-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .room-badge.rated {
+            background: #ffd700;
+            color: #333;
+        }
+
+        .room-badge.casual {
+            background: #28a745;
+            color: white;
+        }
+
+        .room-badge.locked {
+            background: #dc3545;
+            color: white;
+        }
+
+        .room-badge.full {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-join {
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-join:hover {
+            transform: scale(1.05);
+        }
+
+        .btn-join:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .no-rooms {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        /* Live matches list styles */
+        .live-matches-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .live-match-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            transition: all 0.2s;
+            background: linear-gradient(135deg, #fff5f5 0%, #f5fff5 100%);
+        }
+
+        .live-match-item:hover {
+            border-color: #28a745;
+            background: #f8fff8;
+        }
+
+        .live-match-info {
+            flex: 1;
+        }
+
+        .live-match-players {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+            font-size: 16px;
+        }
+
+        .live-match-players .red-player {
+            color: #d32f2f;
+        }
+
+        .live-match-players .black-player {
+            color: #333;
+        }
+
+        .live-match-players .vs {
+            color: #666;
+            margin: 0 8px;
+        }
+
+        .live-match-details {
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            gap: 15px;
+        }
+
+        .live-match-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            background: #28a745;
+            color: white;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .btn-spectate {
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-spectate:hover {
+            transform: scale(1.05);
+        }
+
+        .no-matches {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        /* Profile styles */
+        .profile-content {
+            padding: 20px;
+        }
+
+        .profile-loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .profile-header {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .profile-avatar {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            margin: 0 auto 15px;
+        }
+
+        .profile-username {
+            font-size: 24px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .profile-id {
+            font-size: 13px;
+            color: #666;
+            background: #f0f0f0;
+            padding: 4px 12px;
+            border-radius: 12px;
+            display: inline-block;
+            font-family: monospace;
+        }
+
+        .profile-rank {
+            margin-top: 10px;
+            font-size: 18px;
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .profile-rating-big {
+            font-size: 42px;
+            font-weight: 700;
+            color: #333;
+            margin: 15px 0;
+        }
+
+        .profile-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat-box {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .stat-value.wins { color: #28a745; }
+        .stat-value.losses { color: #dc3545; }
+        .stat-value.draws { color: #6c757d; }
+
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .profile-winrate {
+            margin-top: 20px;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea20 0%, #764ba220 100%);
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .winrate-bar {
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+
+        .winrate-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #20c997);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        .profile-joined {
+            margin-top: 15px;
+            font-size: 12px;
+            color: #999;
+            text-align: center;
+        }
+
+        /* Waiting room styles */
+        .waiting-room {
+            text-align: center;
+        }
+
+        .room-code-display {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .room-code-display .code {
+            font-size: 32px;
+            font-weight: bold;
+            letter-spacing: 3px;
+            color: #667eea;
+            font-family: monospace;
+        }
+
+        .room-code-display .hint {
+            font-size: 12px;
+            color: #666;
+            margin-top: 10px;
+        }
+
+        .waiting-players {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin: 30px 0;
+        }
+
+        .player-slot {
+            padding: 20px 30px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            min-width: 150px;
+        }
+
+        .player-slot.filled {
+            background: #d4edda;
+            border: 2px solid #28a745;
+        }
+
+        .player-slot .player-name {
+            font-weight: 600;
+            font-size: 16px;
+            margin-bottom: 5px;
+        }
+
+        .player-slot .player-rating {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .player-slot.empty {
+            border: 2px dashed #ccc;
+        }
+
+        .waiting-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
     </style>
 </head>
 <body>
@@ -359,12 +862,15 @@
                     <h3>🎮 Chơi Game</h3>
                     <button class="menu-btn" data-action="quick-match">⚡ Tìm Trận Nhanh</button>
                     <button class="menu-btn" data-action="ranked-match">🏆 Xếp Hạng</button>
+                    <button class="menu-btn" data-action="create-room">🏠 Tạo Phòng</button>
+                    <button class="menu-btn" data-action="room-list">📋 Danh Sách Phòng</button>
                 </div>
 
                 <div class="menu-section">
                     <h3>📊 Thống Kê</h3>
                     <button class="menu-btn" data-action="leaderboard">🏅 Bảng Xếp Hạng</button>
-                    <button class="menu-btn" data-action="history">📜 Lịch Sử</button>
+                    <button class="menu-btn" data-action="history">📜 Lịch Sử Trận Đấu</button>
+                    <button class="menu-btn" data-action="spectate">👁️ Xem Trận Đấu</button>
                     <button class="menu-btn" data-action="profile">👤 Hồ Sơ</button>
                 </div>
 
@@ -422,8 +928,442 @@
         </div>
     </div>
 
+    <!-- Create Room Modal -->
+    <div class="modal-overlay" id="create-room-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>🏠 Tạo Phòng Chơi</h2>
+                <button class="modal-close" onclick="closeModal('create-room-modal')">&times;</button>
+            </div>
+            <form id="create-room-form">
+                <div class="form-group">
+                    <label>Mật khẩu phòng (tùy chọn)</label>
+                    <input type="password" id="room-password" placeholder="Để trống nếu không cần mật khẩu">
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="room-rated">
+                        <span>Trận đấu xếp hạng (ảnh hưởng rating)</span>
+                    </label>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" onclick="closeModal('create-room-modal')">Hủy</button>
+                    <button type="submit" class="btn-primary">Tạo Phòng</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Room List Modal -->
+    <div class="modal-overlay" id="room-list-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>📋 Danh Sách Phòng</h2>
+                <button class="modal-close" onclick="closeModal('room-list-modal')">&times;</button>
+            </div>
+            <div class="room-list" id="room-list-container">
+                <div class="no-rooms">
+                    <p>🔄 Đang tải...</p>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" onclick="refreshRoomList()">🔄 Làm mới</button>
+                <button type="button" class="btn-secondary" onclick="closeModal('room-list-modal')">Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Join Room Password Modal -->
+    <div class="modal-overlay" id="join-password-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>🔐 Nhập Mật Khẩu</h2>
+                <button class="modal-close" onclick="closeModal('join-password-modal')">&times;</button>
+            </div>
+            <form id="join-password-form">
+                <div class="form-group">
+                    <label>Mật khẩu phòng</label>
+                    <input type="password" id="join-room-password" placeholder="Nhập mật khẩu phòng" required>
+                </div>
+                <input type="hidden" id="join-room-code">
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" onclick="closeModal('join-password-modal')">Hủy</button>
+                    <button type="submit" class="btn-primary">Vào Phòng</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Live Matches Modal (Spectate) -->
+    <div class="modal-overlay" id="live-matches-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>👁️ Trận Đấu Đang Diễn Ra</h2>
+                <button class="modal-close" onclick="closeModal('live-matches-modal')">&times;</button>
+            </div>
+            <div class="live-matches-list" id="live-matches-container">
+                <div class="no-matches">
+                    <p>🔄 Đang tải...</p>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" onclick="refreshLiveMatches()">🔄 Làm mới</button>
+                <button type="button" class="btn-secondary" onclick="closeModal('live-matches-modal')">Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Profile Modal -->
+    <div class="modal-overlay" id="profile-modal">
+        <div class="modal" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>👤 Hồ Sơ Cá Nhân</h2>
+                <button class="modal-close" onclick="closeModal('profile-modal')">&times;</button>
+            </div>
+            <div class="profile-content" id="profile-content">
+                <div class="profile-loading">
+                    <p>🔄 Đang tải...</p>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" onclick="copyUserId()">📋 Copy ID</button>
+                <button type="button" class="btn-secondary" onclick="closeModal('profile-modal')">Đóng</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Waiting Room Modal -->
+    <div class="modal-overlay" id="waiting-room-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2>🏠 Phòng Chơi</h2>
+                <button class="modal-close" onclick="leaveRoom()">&times;</button>
+            </div>
+            <div class="waiting-room">
+                <div class="room-code-display">
+                    <div class="code" id="waiting-room-code">XXXXXXXX</div>
+                    <div class="hint">Chia sẻ mã này để bạn bè tham gia</div>
+                </div>
+                <div class="waiting-players">
+                    <div class="player-slot filled" id="host-slot">
+                        <div class="player-name" id="host-name">Host</div>
+                        <div class="player-rating" id="host-rating">⭐ 1500</div>
+                    </div>
+                    <div class="player-slot empty" id="guest-slot">
+                        <div class="player-name" id="guest-name"><span class="waiting-spinner"></span>Đang chờ...</div>
+                        <div class="player-rating" id="guest-rating"></div>
+                    </div>
+                </div>
+                <div id="waiting-room-status">
+                    <p>⏳ Đang chờ đối thủ tham gia...</p>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-danger" onclick="leaveRoom()">Rời Phòng</button>
+                    <button type="button" class="btn-primary" id="btn-start-room-game" disabled>🎮 Bắt Đầu</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script type="module">
         import NetworkGameController from '../src/core/networkGameController.js?v=7';
+
+        // Room state
+        let currentRoom = null;
+        let isHost = false;
+
+        // Modal functions (global)
+        window.openModal = function(modalId) {
+            document.getElementById(modalId).classList.add('active');
+        };
+
+        window.closeModal = function(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        };
+
+        // Room functions (global)
+        window.refreshRoomList = async function() {
+            if (!window.gameController?.network) {
+                showMessage('error', 'Chưa kết nối server');
+                return;
+            }
+            
+            const container = document.getElementById('room-list-container');
+            container.innerHTML = '<div class="no-rooms"><p>🔄 Đang tải...</p></div>';
+            
+            try {
+                const response = await window.gameController.network.getRooms();
+                const rooms = response.payload?.rooms || [];
+                displayRoomList(rooms);
+            } catch (error) {
+                container.innerHTML = '<div class="no-rooms"><p>❌ Không thể tải danh sách phòng</p></div>';
+            }
+        };
+
+        // Live Matches (Spectate) Functions
+        window.refreshLiveMatches = async function() {
+            if (!window.gameController?.network) {
+                showMessage('error', 'Chưa kết nối server');
+                return;
+            }
+            
+            const container = document.getElementById('live-matches-container');
+            container.innerHTML = '<div class="no-matches"><p>🔄 Đang tải...</p></div>';
+            
+            try {
+                const response = await window.gameController.network.getLiveMatches();
+                const matches = response.payload?.matches || [];
+                displayLiveMatches(matches);
+            } catch (error) {
+                container.innerHTML = '<div class="no-matches"><p>❌ Không thể tải danh sách trận đấu</p></div>';
+            }
+        };
+
+        function displayLiveMatches(matches) {
+            const container = document.getElementById('live-matches-container');
+            
+            if (!matches || matches.length === 0) {
+                container.innerHTML = '<div class="no-matches"><p>😢 Không có trận đấu nào đang diễn ra</p><p>Hãy quay lại sau!</p></div>';
+                return;
+            }
+            
+            let html = '';
+            for (const match of matches) {
+                const elapsed = Math.floor((Date.now() / 1000 - match.started_at) / 60);
+                
+                html += `
+                    <div class="live-match-item">
+                        <div class="live-match-info">
+                            <div class="live-match-players">
+                                <span class="red-player">🔴 Player #${match.red_user_id}</span>
+                                <span class="vs">VS</span>
+                                <span class="black-player">⚫ Player #${match.black_user_id}</span>
+                            </div>
+                            <div class="live-match-details">
+                                <span class="live-match-badge">🔴 LIVE</span>
+                                <span>📊 ${match.move_count} nước</span>
+                                <span>⏱️ ${elapsed} phút</span>
+                                <span>👥 ${match.spectator_count} người xem</span>
+                            </div>
+                        </div>
+                        <button class="btn-spectate" onclick="joinSpectate('${match.match_id}')">
+                            👁️ Xem
+                        </button>
+                    </div>
+                `;
+            }
+            
+            container.innerHTML = html;
+        }
+
+        window.joinSpectate = async function(matchId) {
+            try {
+                const response = await window.gameController.network.joinSpectate(matchId);
+                
+                if (response.success) {
+                    // Store spectate info and redirect to game page
+                    localStorage.setItem('spectate_match', JSON.stringify({
+                        match_id: matchId,
+                        match: response.payload.match,
+                        spectator_count: response.payload.spectator_count
+                    }));
+                    
+                    closeModal('live-matches-modal');
+                    showMessage('success', 'Đang vào xem trận đấu...');
+                    
+                    // Redirect to game page in spectate mode
+                    setTimeout(() => {
+                        window.location.href = 'game.html?mode=spectate';
+                    }, 500);
+                } else {
+                    showMessage('error', response.message || 'Không thể xem trận đấu');
+                }
+            } catch (error) {
+                showMessage('error', 'Lỗi kết nối server');
+            }
+        };
+
+        // Profile functions
+        let currentProfileData = null;
+
+        window.loadProfile = async function(userId = null) {
+            if (!window.gameController?.network) {
+                showMessage('error', 'Chưa kết nối server');
+                return;
+            }
+            
+            const container = document.getElementById('profile-content');
+            container.innerHTML = '<div class="profile-loading"><p>🔄 Đang tải...</p></div>';
+            
+            try {
+                const response = await window.gameController.network.getProfile(userId);
+                
+                if (response.success && response.payload?.profile) {
+                    currentProfileData = response.payload.profile;
+                    displayProfile(currentProfileData);
+                } else {
+                    container.innerHTML = '<div class="profile-loading"><p>❌ Không thể tải hồ sơ</p></div>';
+                }
+            } catch (error) {
+                container.innerHTML = '<div class="profile-loading"><p>❌ Lỗi kết nối server</p></div>';
+            }
+        };
+
+        function displayProfile(profile) {
+            const container = document.getElementById('profile-content');
+            
+            const firstLetter = profile.username ? profile.username.charAt(0).toUpperCase() : '?';
+            
+            container.innerHTML = `
+                <div class="profile-header">
+                    <div class="profile-avatar">${firstLetter}</div>
+                    <div class="profile-username">${profile.username}</div>
+                    <div class="profile-id">ID: ${profile.user_id}</div>
+                    <div class="profile-rank">🏅 ${profile.rank_title}</div>
+                    <div class="profile-rating-big">⭐ ${profile.rating}</div>
+                </div>
+                
+                <div class="profile-stats">
+                    <div class="stat-box">
+                        <div class="stat-value wins">${profile.wins}</div>
+                        <div class="stat-label">🏆 Thắng</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value losses">${profile.losses}</div>
+                        <div class="stat-label">💔 Thua</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value draws">${profile.draws}</div>
+                        <div class="stat-label">🤝 Hòa</div>
+                    </div>
+                </div>
+                
+                <div class="profile-winrate">
+                    <div>📊 Tổng số trận: <strong>${profile.total_matches}</strong></div>
+                    <div class="winrate-bar">
+                        <div class="winrate-fill" style="width: ${profile.win_rate}%"></div>
+                    </div>
+                    <div>Tỷ lệ thắng: <strong>${profile.win_rate.toFixed(1)}%</strong></div>
+                </div>
+                
+                <div class="profile-joined">
+                    📅 Tham gia: ${profile.created_at || 'N/A'}
+                </div>
+            `;
+        }
+
+        window.copyUserId = function() {
+            if (currentProfileData && currentProfileData.user_id) {
+                navigator.clipboard.writeText(currentProfileData.user_id.toString())
+                    .then(() => {
+                        showMessage('success', 'Đã copy ID: ' + currentProfileData.user_id);
+                    })
+                    .catch(() => {
+                        // Fallback for older browsers
+                        const textArea = document.createElement('textarea');
+                        textArea.value = currentProfileData.user_id.toString();
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textArea);
+                        showMessage('success', 'Đã copy ID: ' + currentProfileData.user_id);
+                    });
+            } else {
+                showMessage('error', 'Không có dữ liệu ID');
+            }
+        };
+
+        window.joinRoom = async function(roomCode, hasPassword) {
+            if (hasPassword) {
+                document.getElementById('join-room-code').value = roomCode;
+                closeModal('room-list-modal');
+                openModal('join-password-modal');
+            } else {
+                await doJoinRoom(roomCode, '');
+            }
+        };
+
+        window.leaveRoom = async function() {
+            if (!currentRoom) {
+                closeModal('waiting-room-modal');
+                return;
+            }
+            
+            try {
+                await window.gameController.network.leaveRoom(currentRoom);
+            } catch (e) {
+                console.warn('Leave room error:', e);
+            }
+            
+            currentRoom = null;
+            isHost = false;
+            closeModal('waiting-room-modal');
+            showMessage('info', 'Đã rời phòng');
+        };
+
+        async function doJoinRoom(roomCode, password) {
+            try {
+                const response = await window.gameController.network.joinRoom(roomCode, password);
+                
+                currentRoom = roomCode;
+                isHost = false;
+                
+                // Update waiting room UI as guest
+                const hostInfo = response.payload;
+                document.getElementById('waiting-room-code').textContent = roomCode;
+                document.getElementById('host-name').textContent = hostInfo.host_name || 'Host';
+                document.getElementById('host-rating').textContent = `⭐ ${hostInfo.host_rating || 1500}`;
+                
+                const userData = JSON.parse(localStorage.getItem('xiangqi_user') || '{}');
+                document.getElementById('guest-name').textContent = userData.username || 'You';
+                document.getElementById('guest-rating').textContent = `⭐ ${userData.rating || 1500}`;
+                document.getElementById('guest-slot').classList.add('filled');
+                document.getElementById('guest-slot').classList.remove('empty');
+                
+                document.getElementById('waiting-room-status').innerHTML = '<p>✅ Đã tham gia! Đang chờ host bắt đầu...</p>';
+                document.getElementById('btn-start-room-game').style.display = 'none';
+                
+                closeModal('room-list-modal');
+                closeModal('join-password-modal');
+                openModal('waiting-room-modal');
+                
+                showMessage('success', 'Đã tham gia phòng!');
+            } catch (error) {
+                showMessage('error', `Không thể vào phòng: ${error.message}`);
+            }
+        }
+
+        function displayRoomList(rooms) {
+            const container = document.getElementById('room-list-container');
+            
+            if (!rooms || rooms.length === 0) {
+                container.innerHTML = '<div class="no-rooms"><p>😢 Chưa có phòng nào</p><p>Hãy tạo phòng mới!</p></div>';
+                return;
+            }
+            
+            container.innerHTML = rooms.map(room => {
+                const isFull = room.has_guest;
+                const hasPassword = room.has_password;
+                
+                return `
+                    <div class="room-item">
+                        <div class="room-info">
+                            <div class="room-host">🏠 ${room.host_name}</div>
+                            <div class="room-details">
+                                <span class="room-badge ${room.rated ? 'rated' : 'casual'}">${room.rated ? '🏆 Xếp hạng' : '🎮 Thường'}</span>
+                                ${hasPassword ? '<span class="room-badge locked">🔒 Có mật khẩu</span>' : ''}
+                                ${isFull ? '<span class="room-badge full">Đầy</span>' : ''}
+                            </div>
+                        </div>
+                        <button class="btn-join" 
+                            onclick="joinRoom('${room.room_code}', ${hasPassword})"
+                            ${isFull ? 'disabled' : ''}>
+                            ${isFull ? 'Đầy' : 'Vào'}
+                        </button>
+                    </div>
+                `;
+            }).join('');
+        }
 
         // Biến cờ để kiểm tra trạng thái kết nối
         let isConnected = false;
@@ -631,8 +1571,23 @@
                     case 'leaderboard':
                         loadLeaderboard();
                         break;
+                    case 'create-room':
+                        openModal('create-room-modal');
+                        break;
+                    case 'room-list':
+                        openModal('room-list-modal');
+                        refreshRoomList();
+                        break;
                     case 'history':
-                        showMessage('info', 'Chức năng đang phát triển');
+                        window.location.href = 'replay.html';
+                        break;
+                    case 'spectate':
+                        openModal('live-matches-modal');
+                        refreshLiveMatches();
+                        break;
+                    case 'profile':
+                        openModal('profile-modal');
+                        loadProfile();
                         break;
                     default:
                         showMessage('info', 'Chức năng đang phát triển');
@@ -709,6 +1664,128 @@
                         msgDiv.style.display = 'none';
                     }, 5000);
                 }
+            }
+
+            // Create room form handler
+            document.getElementById('create-room-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                if (!window.gameController?.network) {
+                    showMessage('error', 'Chưa kết nối server');
+                    return;
+                }
+                
+                const password = document.getElementById('room-password').value;
+                const rated = document.getElementById('room-rated').checked;
+                
+                try {
+                    const response = await window.gameController.network.createRoom('', password, rated);
+                    
+                    const roomCode = response.payload.room_code;
+                    currentRoom = roomCode;
+                    isHost = true;
+                    
+                    // Setup waiting room UI
+                    const userData = JSON.parse(localStorage.getItem('xiangqi_user') || '{}');
+                    document.getElementById('waiting-room-code').textContent = roomCode;
+                    document.getElementById('host-name').textContent = userData.username || 'You';
+                    document.getElementById('host-rating').textContent = `⭐ ${userData.rating || 1500}`;
+                    document.getElementById('guest-name').innerHTML = '<span class="waiting-spinner"></span>Đang chờ...';
+                    document.getElementById('guest-rating').textContent = '';
+                    document.getElementById('guest-slot').classList.remove('filled');
+                    document.getElementById('guest-slot').classList.add('empty');
+                    document.getElementById('waiting-room-status').innerHTML = '<p>⏳ Đang chờ đối thủ tham gia...</p>';
+                    document.getElementById('btn-start-room-game').disabled = true;
+                    document.getElementById('btn-start-room-game').style.display = '';
+                    
+                    closeModal('create-room-modal');
+                    openModal('waiting-room-modal');
+                    
+                    showMessage('success', 'Phòng đã được tạo!');
+                    
+                    // Clear form
+                    document.getElementById('room-password').value = '';
+                    document.getElementById('room-rated').checked = false;
+                } catch (error) {
+                    showMessage('error', `Không thể tạo phòng: ${error.message}`);
+                }
+            });
+
+            // Join room password form handler
+            document.getElementById('join-password-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                const roomCode = document.getElementById('join-room-code').value;
+                const password = document.getElementById('join-room-password').value;
+                
+                await doJoinRoom(roomCode, password);
+                document.getElementById('join-room-password').value = '';
+            });
+
+            // Start room game button handler
+            document.getElementById('btn-start-room-game').addEventListener('click', async () => {
+                if (!currentRoom || !isHost) return;
+                
+                try {
+                    window.gameController.network.startRoomGame(currentRoom);
+                    // Match found event will handle redirect
+                } catch (error) {
+                    showMessage('error', `Không thể bắt đầu: ${error.message}`);
+                }
+            });
+
+            // Listen for room events from server
+            if (gameController.network) {
+                // Guest joined room
+                gameController.network.on('room_guest_joined', (msg) => {
+                    const guest = msg.payload;
+                    document.getElementById('guest-name').textContent = guest.guest_name || 'Guest';
+                    document.getElementById('guest-rating').textContent = `⭐ ${guest.guest_rating || 1500}`;
+                    document.getElementById('guest-slot').classList.add('filled');
+                    document.getElementById('guest-slot').classList.remove('empty');
+                    document.getElementById('waiting-room-status').innerHTML = '<p>✅ Đối thủ đã tham gia! Sẵn sàng bắt đầu.</p>';
+                    document.getElementById('btn-start-room-game').disabled = false;
+                    showMessage('success', `${guest.guest_name} đã tham gia phòng!`);
+                });
+
+                // Guest left room
+                gameController.network.on('room_guest_left', (msg) => {
+                    document.getElementById('guest-name').innerHTML = '<span class="waiting-spinner"></span>Đang chờ...';
+                    document.getElementById('guest-rating').textContent = '';
+                    document.getElementById('guest-slot').classList.remove('filled');
+                    document.getElementById('guest-slot').classList.add('empty');
+                    document.getElementById('waiting-room-status').innerHTML = '<p>⏳ Đang chờ đối thủ tham gia...</p>';
+                    document.getElementById('btn-start-room-game').disabled = true;
+                    showMessage('info', 'Đối thủ đã rời phòng');
+                });
+
+                // Room closed by host
+                gameController.network.on('room_closed', (msg) => {
+                    currentRoom = null;
+                    isHost = false;
+                    closeModal('waiting-room-modal');
+                    showMessage('info', 'Host đã đóng phòng');
+                });
+
+                // Room list updated
+                gameController.network.on('rooms_update', (msg) => {
+                    if (document.getElementById('room-list-modal').classList.contains('active')) {
+                        displayRoomList(msg.payload || []);
+                    }
+                });
+
+                // Match found (from room game start)
+                gameController.network.on('match_found', (msg) => {
+                    if (currentRoom) {
+                        localStorage.setItem('current_match', JSON.stringify(msg.payload));
+                        closeModal('waiting-room-modal');
+                        currentRoom = null;
+                        isHost = false;
+                        setTimeout(() => {
+                            window.location.href = 'game.html';
+                        }, 300);
+                    }
+                });
             }
 
             // Load initial leaderboard

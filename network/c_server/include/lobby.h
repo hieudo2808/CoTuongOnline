@@ -59,7 +59,9 @@ char* lobby_create_room(int host_user_id, const char* room_name,
 bool lobby_join_room(const char* room_code, const char* password, int user_id,
                      int* out_host_id);
 bool lobby_close_room(const char* room_code, int user_id);
+bool lobby_leave_room(const char* room_code, int user_id);
 room_t* lobby_get_room(const char* room_code);
+char* lobby_get_rooms_json(void);
 
 // Challenges
 char* lobby_create_challenge(int from_user_id, int to_user_id, bool rated);

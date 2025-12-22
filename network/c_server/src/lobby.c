@@ -10,6 +10,8 @@
 #include <string.h>
 #include <time.h>
 
+#include "db.h"
+
 static lobby_player_t ready_players[MAX_READY_PLAYERS];
 static int ready_count = 0;
 
@@ -223,6 +225,61 @@ room_t* lobby_get_room(const char* room_code) {
         }
     }
     return NULL;
+}
+
+// Get all rooms as JSON
+char* lobby_get_rooms_json(void) {
+    char* json = malloc(16384);
+    if (!json) return NULL;
+
+    char* ptr = json;
+    ptr += sprintf(ptr, "[");
+
+    int first = 1;
+    for (int i = 0; i < MAX_ROOMS; i++) {
+        if (rooms[i].occupied) {
+            if (!first) ptr += sprintf(ptr, ",");
+            first = 0;
+            
+            // Get host username from DB
+            char host_username[64] = "Unknown";
+            db_get_user_by_id(rooms[i].host_user_id, host_username, NULL, NULL, NULL, NULL, NULL);
+            
+            ptr += sprintf(ptr, 
+                "{\"room_code\":\"%s\",\"host_id\":%d,\"host_name\":\"%s\","
+                "\"has_password\":%s,\"rated\":%s,\"has_guest\":%s}",
+                rooms[i].room_code,
+                rooms[i].host_user_id,
+                host_username,
+                rooms[i].password[0] != '\0' ? "true" : "false",
+                rooms[i].rated ? "true" : "false",
+                rooms[i].guest_user_id != 0 ? "true" : "false"
+            );
+        }
+    }
+
+    sprintf(ptr, "]");
+    return json;
+}
+
+// Leave room (for guest)
+bool lobby_leave_room(const char* room_code, int user_id) {
+    for (int i = 0; i < MAX_ROOMS; i++) {
+        if (rooms[i].occupied && strcmp(rooms[i].room_code, room_code) == 0) {
+            // If guest is leaving
+            if (rooms[i].guest_user_id == user_id) {
+                rooms[i].guest_user_id = 0;
+                return true;
+            }
+            // If host is leaving, close the room
+            if (rooms[i].host_user_id == user_id) {
+                memset(&rooms[i], 0, sizeof(room_t));
+                return true;
+            }
+            return false;
+        }
+    }
+    return false;
 }
 
 // Create challenge

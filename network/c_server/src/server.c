@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include "../include/account.h"
+#include "../include/broadcast.h"
 #include "../include/db.h"
 #include "../include/handlers.h"
 #include "../include/lobby.h"
@@ -418,7 +419,37 @@ void server_run(server_t* server) {
 
         // Periodic cleanup
         static time_t last_cleanup = 0;
+        static time_t last_timeout_check = 0;
         time_t now = time(NULL);
+        
+        // Check timeouts every 5 seconds
+        if (now - last_timeout_check >= 5) {
+            match_check_all_timeouts();
+            
+            // Broadcast any pending timeouts
+            timeout_info_t timeouts[100];
+            int timeout_count = match_get_pending_timeouts(timeouts, 100);
+            
+            for (int i = 0; i < timeout_count; i++) {
+                char payload[256];
+                snprintf(payload, sizeof(payload),
+                         "{\"match_id\":\"%s\",\"result\":\"%s\",\"reason\":\"timeout\"}",
+                         timeouts[i].match_id, timeouts[i].result);
+                char notify[512];
+                snprintf(notify, sizeof(notify),
+                         "{\"type\":\"game_end\",\"payload\":%s}\n", payload);
+                
+                // Send to both players
+                send_to_user(server, timeouts[i].red_user_id, notify);
+                send_to_user(server, timeouts[i].black_user_id, notify);
+                
+                printf("[Server] Broadcast timeout: %s -> %s\n", 
+                       timeouts[i].match_id, timeouts[i].result);
+            }
+            
+            last_timeout_check = now;
+        }
+        
         if (now - last_cleanup > 60) {  // Every minute
             session_cleanup_expired();
             lobby_cleanup_expired_challenges();

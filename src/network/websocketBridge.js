@@ -577,6 +577,147 @@ class NetworkBridge {
     }
 
     /**
+     * Create a room
+     */
+    createRoom(roomName = "", password = "", rated = false) {
+        return this.sendAndWait("create_room", {
+            room_name: roomName,
+            password: password,
+            rated: rated
+        }, "create_room");
+    }
+
+    /**
+     * Join a room
+     */
+    joinRoom(roomCode, password = "") {
+        return this.sendAndWait("join_room", {
+            room_code: roomCode,
+            password: password
+        }, "join_room");
+    }
+
+    /**
+     * Leave a room
+     */
+    leaveRoom(roomCode) {
+        return this.sendAndWait("leave_room", {
+            room_code: roomCode
+        }, "leave_room");
+    }
+
+    /**
+     * Get rooms list
+     */
+    getRooms() {
+        return this.sendAndWait("get_rooms", {}, "get_rooms");
+    }
+
+    /**
+     * Start game in room (host only)
+     */
+    startRoomGame(roomCode) {
+        return this.send("start_room_game", {
+            room_code: roomCode
+        });
+    }
+
+    /**
+     * Request rematch
+     */
+    requestRematch(matchId) {
+        return this.sendAndWait("rematch_request", {
+            match_id: matchId
+        }, "rematch_request");
+    }
+
+    /**
+     * Respond to rematch request
+     */
+    respondRematch(matchId, accept) {
+        return this.send("rematch_response", {
+            match_id: matchId,
+            accept: accept
+        });
+    }
+
+    /**
+     * Get match history
+     */
+    getMatchHistory(limit = 20, offset = 0) {
+        return this.sendAndWait("match_history", {
+            limit: limit,
+            offset: offset
+        }, "match_history");
+    }
+
+    /**
+     * Get match details (for replay)
+     */
+    getMatchDetails(matchId) {
+        return this.sendAndWait("get_match", {
+            match_id: matchId
+        }, "get_match");
+    }
+
+    // =========================
+    // Spectator Functions
+    // =========================
+
+    /**
+     * Get list of live matches for spectating
+     */
+    getLiveMatches() {
+        return this.sendAndWait("get_live_matches", {}, "get_live_matches");
+    }
+
+    /**
+     * Join a match as spectator
+     * @param {string} matchId - The match ID to spectate
+     */
+    joinSpectate(matchId) {
+        return this.sendAndWait("join_spectate", {
+            match_id: matchId
+        }, "join_spectate");
+    }
+
+    /**
+     * Leave spectating a match
+     * @param {string} matchId - The match ID to stop spectating
+     */
+    leaveSpectate(matchId) {
+        return this.sendAndWait("leave_spectate", {
+            match_id: matchId
+        }, "leave_spectate");
+    }
+
+    // =========================
+    // Profile Functions
+    // =========================
+
+    /**
+     * Get user profile (own or another user's)
+     * @param {number} userId - Optional user ID (defaults to own profile)
+     */
+    getProfile(userId = null) {
+        const payload = userId ? { user_id: userId } : {};
+        return this.sendAndWait("get_profile", payload, "get_profile");
+    }
+
+    // =========================
+    // Timer Functions
+    // =========================
+
+    /**
+     * Get current timer state from server
+     * @param {string} matchId - Optional match ID
+     */
+    getTimer(matchId = null) {
+        const payload = matchId ? { match_id: matchId } : {};
+        return this.sendAndWait("get_timer", payload, "get_timer");
+    }
+
+    /**
      * Disconnect
      */
     disconnect() {

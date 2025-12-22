@@ -102,8 +102,13 @@ void broadcast_to_match(server_t* server, const char* match_id,
     send_to_user(server, match->red_user_id, message);
     send_to_user(server, match->black_user_id, message);
 
-    printf("[Broadcast] Sent to match %s (users %d, %d)\n", match_id,
-           match->red_user_id, match->black_user_id);
+    // Send to spectators
+    for (int i = 0; i < match->spectator_count; i++) {
+        send_to_user(server, match->spectator_ids[i], message);
+    }
+
+    printf("[Broadcast] Sent to match %s (players: %d, %d, spectators: %d)\n", match_id,
+           match->red_user_id, match->black_user_id, match->spectator_count);
 }
 
 // Broadcast to all ready players in lobby

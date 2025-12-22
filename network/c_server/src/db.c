@@ -528,6 +528,186 @@ bool db_get_leaderboard(int limit, int offset, char* out_json,
     return true;
 }
 
+// Get match history for a user
+bool db_get_match_history(int user_id, int limit, int offset, char* out_json, size_t json_size) {
+    SQLHSTMT stmt;
+    SQLRETURN ret;
+    SQLLEN indicator;
+    char match_id[64], result[16], started[32], ended[32];
+    char red_username[64], black_username[64];
+    int red_user_id, black_user_id;
+    char buffer[512];
+
+    const char* sql =
+        "SELECT m.match_id, m.red_user_id, m.black_user_id, m.result, "
+        "m.started_at, m.ended_at, "
+        "u1.username as red_name, u2.username as black_name "
+        "FROM Matches m "
+        "JOIN Users u1 ON m.red_user_id = u1.user_id "
+        "JOIN Users u2 ON m.black_user_id = u2.user_id "
+        "WHERE m.red_user_id = ? OR m.black_user_id = ? "
+        "ORDER BY m.ended_at DESC "
+        "OFFSET ? ROWS FETCH NEXT ? ROWS ONLY";
+
+    ret = SQLAllocHandle(SQL_HANDLE_STMT, g_db_conn, &stmt);
+    if (ret != SQL_SUCCESS) {
+        return false;
+    }
+
+    ret = SQLPrepare(stmt, (SQLCHAR*)sql, SQL_NTS);
+    if (ret != SQL_SUCCESS) {
+        SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+        return false;
+    }
+
+    SQLBindParameter(stmt, 1, SQL_PARAM_INPUT, SQL_C_SLONG, SQL_INTEGER, 0, 0,
+                     &user_id, 0, NULL);
+    SQLBindParameter(stmt, 2, SQL_PARAM_INPUT, SQL_C_SLONG, SQL_INTEGER, 0, 0,
+                     &user_id, 0, NULL);
+    SQLBindParameter(stmt, 3, SQL_PARAM_INPUT, SQL_C_SLONG, SQL_INTEGER, 0, 0,
+                     &offset, 0, NULL);
+    SQLBindParameter(stmt, 4, SQL_PARAM_INPUT, SQL_C_SLONG, SQL_INTEGER, 0, 0,
+                     &limit, 0, NULL);
+
+    ret = SQLExecute(stmt);
+    if (ret != SQL_SUCCESS && ret != SQL_SUCCESS_WITH_INFO) {
+        SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+        return false;
+    }
+
+    strcpy(out_json, "[");
+    bool first = true;
+
+    while (SQLFetch(stmt) == SQL_SUCCESS) {
+        SQLGetData(stmt, 1, SQL_C_CHAR, match_id, sizeof(match_id), &indicator);
+        SQLGetData(stmt, 2, SQL_C_SLONG, &red_user_id, 0, &indicator);
+        SQLGetData(stmt, 3, SQL_C_SLONG, &black_user_id, 0, &indicator);
+        SQLGetData(stmt, 4, SQL_C_CHAR, result, sizeof(result), &indicator);
+        SQLGetData(stmt, 5, SQL_C_CHAR, started, sizeof(started), &indicator);
+        SQLGetData(stmt, 6, SQL_C_CHAR, ended, sizeof(ended), &indicator);
+        SQLGetData(stmt, 7, SQL_C_CHAR, red_username, sizeof(red_username), &indicator);
+        SQLGetData(stmt, 8, SQL_C_CHAR, black_username, sizeof(black_username), &indicator);
+
+        // Determine if user won/lost/drew
+        const char* user_result = "unknown";
+        if (strcmp(result, "red_wins") == 0) {
+            user_result = (user_id == red_user_id) ? "win" : "loss";
+        } else if (strcmp(result, "black_wins") == 0) {
+            user_result = (user_id == black_user_id) ? "win" : "loss";
+        } else if (strcmp(result, "draw") == 0) {
+            user_result = "draw";
+        }
+
+        // Determine opponent
+        const char* opponent = (user_id == red_user_id) ? black_username : red_username;
+        const char* my_color = (user_id == red_user_id) ? "red" : "black";
+
+        snprintf(buffer, sizeof(buffer),
+                 "%s{\"match_id\":\"%s\",\"opponent\":\"%s\",\"my_color\":\"%s\","
+                 "\"result\":\"%s\",\"started_at\":\"%s\",\"ended_at\":\"%s\"}",
+                 first ? "" : ",", match_id, opponent, my_color,
+                 user_result, started, ended);
+
+        if (strlen(out_json) + strlen(buffer) + 2 < json_size) {
+            strcat(out_json, buffer);
+            first = false;
+        }
+    }
+
+    strcat(out_json, "]");
+
+    SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+    return true;
+}
+
+// Get detailed user profile with stats
+bool db_get_user_profile(int user_id, char* out_json, size_t json_size) {
+    SQLHSTMT stmt;
+    SQLRETURN ret;
+    SQLLEN indicator;
+    char username[64], email[128], created_at[32];
+    int rating, wins, losses, draws;
+    int total_matches;
+
+    // First query: get user info
+    const char* sql = 
+        "SELECT username, email, rating, wins, losses, draws, created_at "
+        "FROM Users WHERE user_id = ?";
+
+    ret = SQLAllocHandle(SQL_HANDLE_STMT, g_db_conn, &stmt);
+    if (ret != SQL_SUCCESS) {
+        return false;
+    }
+
+    ret = SQLPrepare(stmt, (SQLCHAR*)sql, SQL_NTS);
+    if (ret != SQL_SUCCESS) {
+        SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+        return false;
+    }
+
+    SQLBindParameter(stmt, 1, SQL_PARAM_INPUT, SQL_C_SLONG, SQL_INTEGER, 0, 0,
+                     &user_id, 0, NULL);
+
+    ret = SQLExecute(stmt);
+    if (ret != SQL_SUCCESS && ret != SQL_SUCCESS_WITH_INFO) {
+        SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+        return false;
+    }
+
+    if (SQLFetch(stmt) != SQL_SUCCESS) {
+        SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+        return false;
+    }
+
+    SQLGetData(stmt, 1, SQL_C_CHAR, username, sizeof(username), &indicator);
+    SQLGetData(stmt, 2, SQL_C_CHAR, email, sizeof(email), &indicator);
+    SQLGetData(stmt, 3, SQL_C_SLONG, &rating, 0, &indicator);
+    SQLGetData(stmt, 4, SQL_C_SLONG, &wins, 0, &indicator);
+    SQLGetData(stmt, 5, SQL_C_SLONG, &losses, 0, &indicator);
+    SQLGetData(stmt, 6, SQL_C_SLONG, &draws, 0, &indicator);
+    SQLGetData(stmt, 7, SQL_C_CHAR, created_at, sizeof(created_at), &indicator);
+
+    SQLFreeHandle(SQL_HANDLE_STMT, stmt);
+
+    total_matches = wins + losses + draws;
+    
+    // Calculate win rate
+    double win_rate = 0.0;
+    if (total_matches > 0) {
+        win_rate = (double)wins / total_matches * 100.0;
+    }
+
+    // Calculate rank based on rating
+    const char* rank_title;
+    if (rating >= 2400) rank_title = "Đại Kiện Tướng";
+    else if (rating >= 2200) rank_title = "Kiện Tướng Quốc Tế";
+    else if (rating >= 2000) rank_title = "Kiện Tướng";
+    else if (rating >= 1800) rank_title = "Cao Thủ";
+    else if (rating >= 1600) rank_title = "Chuyên Gia";
+    else if (rating >= 1400) rank_title = "Thành Thạo";
+    else if (rating >= 1200) rank_title = "Nghiệp Dư";
+    else rank_title = "Tân Thủ";
+
+    snprintf(out_json, json_size,
+             "{"
+             "\"user_id\":%d,"
+             "\"username\":\"%s\","
+             "\"email\":\"%s\","
+             "\"rating\":%d,"
+             "\"rank_title\":\"%s\","
+             "\"wins\":%d,"
+             "\"losses\":%d,"
+             "\"draws\":%d,"
+             "\"total_matches\":%d,"
+             "\"win_rate\":%.1f,"
+             "\"created_at\":\"%s\""
+             "}",
+             user_id, username, email, rating, rank_title,
+             wins, losses, draws, total_matches, win_rate, created_at);
+
+    return true;
+}
+
 // Check if username exists
 bool db_check_username_exists(const char* username) {
     SQLHSTMT stmt;

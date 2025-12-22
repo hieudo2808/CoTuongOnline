@@ -447,6 +447,28 @@ void handle_move(server_t* server, client_t* client, message_t* msg) {
         return;
     }
 
+    // Update timer before move (deduct time from current player)
+    match_update_timer(match_id);
+    
+    // Check for timeout
+    if (match_check_timeout(match_id)) {
+        const char* winner = is_red_player ? "black_wins" : "red_wins";
+        match_end(match_id, winner, "timeout");
+        
+        // Notify both players
+        char timeout_payload[256];
+        snprintf(timeout_payload, sizeof(timeout_payload),
+                 "{\"match_id\":\"%s\",\"result\":\"%s\",\"reason\":\"timeout\"}",
+                 match_id, winner);
+        char timeout_msg[512];
+        snprintf(timeout_msg, sizeof(timeout_msg),
+                 "{\"type\":\"game_end\",\"payload\":%s}\n", timeout_payload);
+        broadcast_to_match(server, match_id, timeout_msg);
+        
+        send_response(server, client, msg->seq, false, "Time expired", NULL);
+        return;
+    }
+
     // Add move
     move_t move = {0};
     move.from_row = from_row;
@@ -454,21 +476,29 @@ void handle_move(server_t* server, client_t* client, message_t* msg) {
     move.to_row = to_row;
     move.to_col = to_col;
     move.timestamp = time(NULL);
+    // Store remaining times in move
+    move.red_time_ms = match->red_time_ms;
+    move.black_time_ms = match->black_time_ms;
 
     if (!match_add_move(match_id, &move)) {
         send_response(server, client, msg->seq, false, "Failed to add move", NULL);
         return;
     }
 
-    // Success
-    send_response(server, client, msg->seq, true, "Move accepted", NULL);
+    // Success - include timer info in response
+    char timer_json[128];
+    snprintf(timer_json, sizeof(timer_json),
+             "{\"red_time_ms\":%d,\"black_time_ms\":%d}",
+             match->red_time_ms, match->black_time_ms);
+    send_response(server, client, msg->seq, true, "Move accepted", timer_json);
 
-    // Send move to opponent only (not to the sender)
+    // Send move to opponent with timer sync
     char payload[512];
     snprintf(payload, sizeof(payload),
              "{\"match_id\":\"%s\",\"from\":{\"row\":%d,\"col\":%d},\"to\":{"
-             "\"row\":%d,\"col\":%d}}",
-             match_id, from_row, from_col, to_row, to_col);
+             "\"row\":%d,\"col\":%d},\"red_time_ms\":%d,\"black_time_ms\":%d}",
+             match_id, from_row, from_col, to_row, to_col,
+             match->red_time_ms, match->black_time_ms);
 
     char broadcast_msg[1024];
     snprintf(broadcast_msg, sizeof(broadcast_msg),
@@ -478,8 +508,14 @@ void handle_move(server_t* server, client_t* client, message_t* msg) {
     int opponent_id = (match->red_user_id == user_id) ? match->black_user_id : match->red_user_id;
     send_to_user(server, opponent_id, broadcast_msg);
 
-    printf("[Handler] Move: %s (%d,%d)->(%d,%d)\n", match_id, from_row,
-           from_col, to_row, to_col);
+    // Also broadcast to spectators
+    for (int i = 0; i < match->spectator_count; i++) {
+        send_to_user(server, match->spectator_ids[i], broadcast_msg);
+    }
+
+    printf("[Handler] Move: %s (%d,%d)->(%d,%d) [Red:%dms, Black:%dms]\n", 
+           match_id, from_row, from_col, to_row, to_col,
+           match->red_time_ms, match->black_time_ms);
 }
 
 void handle_resign(server_t* server, client_t* client, message_t* msg) {
@@ -975,6 +1011,718 @@ void handle_chat_message(server_t* server, client_t* client, message_t* msg) {
            match_id);
 }
 
+// Handler: Create Room
+void handle_create_room(server_t* server, client_t* client, message_t* msg) {
+    // Validate token
+    int user_id;
+    if (!validate_token_and_get_user(msg->token, &user_id)) {
+        send_response(server, client, msg->seq, false, "Invalid or expired token", NULL);
+        return;
+    }
+    client->user_id = user_id;
+    client->authenticated = true;
+
+    // Parse payload
+    const char* room_name = json_get_string(msg->payload_json, "room_name");
+    const char* password = json_get_string(msg->payload_json, "password");
+    bool rated = json_get_bool(msg->payload_json, "rated");
+
+    // Create room
+    char* room_code = lobby_create_room(user_id, room_name, password, rated);
+    if (!room_code) {
+        send_response(server, client, msg->seq, false, "Failed to create room", NULL);
+        return;
+    }
+
+    // Get username for response
+    char username[64] = {0};
+    db_get_username(user_id, username, sizeof(username));
+
+    // Success
+    char payload[256];
+    snprintf(payload, sizeof(payload),
+             "{\"room_code\":\"%s\",\"host_id\":%d,\"host_name\":\"%s\",\"rated\":%s}",
+             room_code, user_id, username, rated ? "true" : "false");
+    send_response(server, client, msg->seq, true, "Room created", payload);
+
+    // Broadcast room list update to all clients
+    char* rooms_json = lobby_get_rooms_json();
+    if (rooms_json) {
+        char broadcast_msg[16384];
+        snprintf(broadcast_msg, sizeof(broadcast_msg),
+                 "{\"type\":\"rooms_update\",\"payload\":%s}\n", rooms_json);
+        broadcast_to_lobby(server, broadcast_msg);
+        free(rooms_json);
+    }
+
+    printf("[Handler] Room created: %s by user %d\n", room_code, user_id);
+    free(room_code);
+}
+
+// Handler: Join Room
+void handle_join_room(server_t* server, client_t* client, message_t* msg) {
+    // Validate token
+    int user_id;
+    if (!validate_token_and_get_user(msg->token, &user_id)) {
+        send_response(server, client, msg->seq, false, "Invalid or expired token", NULL);
+        return;
+    }
+    client->user_id = user_id;
+    client->authenticated = true;
+
+    // Parse payload
+    const char* room_code = json_get_string(msg->payload_json, "room_code");
+    const char* password = json_get_string(msg->payload_json, "password");
+
+    if (!room_code) {
+        send_response(server, client, msg->seq, false, "Room code required", NULL);
+        return;
+    }
+
+    // Try to join room
+    int host_id;
+    if (!lobby_join_room(room_code, password, user_id, &host_id)) {
+        send_response(server, client, msg->seq, false, "Cannot join room (wrong password, full, or not found)", NULL);
+        return;
+    }
+
+    // Get host and guest usernames
+    char host_username[64] = {0};
+    char guest_username[64] = {0};
+    int host_rating = 1500, guest_rating = 1500;
+    db_get_user_by_id(host_id, host_username, NULL, &host_rating, NULL, NULL, NULL);
+    db_get_user_by_id(user_id, guest_username, NULL, &guest_rating, NULL, NULL, NULL);
+
+    // Send success to joiner
+    char payload[512];
+    snprintf(payload, sizeof(payload),
+             "{\"room_code\":\"%s\",\"host_id\":%d,\"host_name\":\"%s\",\"host_rating\":%d}",
+             room_code, host_id, host_username, host_rating);
+    send_response(server, client, msg->seq, true, "Joined room", payload);
+
+    // Notify host that someone joined
+    client_t* host_client = server_get_client_by_user_id(server, host_id);
+    if (host_client) {
+        char notification[512];
+        snprintf(notification, sizeof(notification),
+                 "{\"type\":\"room_guest_joined\",\"payload\":{\"room_code\":\"%s\",\"guest_id\":%d,\"guest_name\":\"%s\",\"guest_rating\":%d}}\n",
+                 room_code, user_id, guest_username, guest_rating);
+        send_to_client(server, host_client->fd, notification);
+    }
+
+    // Broadcast room list update
+    char* rooms_json = lobby_get_rooms_json();
+    if (rooms_json) {
+        char broadcast_msg[16384];
+        snprintf(broadcast_msg, sizeof(broadcast_msg),
+                 "{\"type\":\"rooms_update\",\"payload\":%s}\n", rooms_json);
+        broadcast_to_lobby(server, broadcast_msg);
+        free(rooms_json);
+    }
+
+    printf("[Handler] User %d joined room %s\n", user_id, room_code);
+}
+
+// Handler: Leave Room
+void handle_leave_room(server_t* server, client_t* client, message_t* msg) {
+    // Validate token
+    int user_id;
+    if (!validate_token_and_get_user(msg->token, &user_id)) {
+        send_response(server, client, msg->seq, false, "Invalid or expired token", NULL);
+        return;
+    }
+    client->user_id = user_id;
+    client->authenticated = true;
+
+    // Parse payload
+    const char* room_code = json_get_string(msg->payload_json, "room_code");
+    if (!room_code) {
+        send_response(server, client, msg->seq, false, "Room code required", NULL);
+        return;
+    }
+
+    // Get room info before leaving
+    room_t* room = lobby_get_room(room_code);
+    if (!room) {
+        send_response(server, client, msg->seq, false, "Room not found", NULL);
+        return;
+    }
+
+    int host_id = room->host_user_id;
+    int guest_id = room->guest_user_id;
+    bool is_host = (user_id == host_id);
+
+    // Leave room
+    if (!lobby_leave_room(room_code, user_id)) {
+        send_response(server, client, msg->seq, false, "Cannot leave room", NULL);
+        return;
+    }
+
+    send_response(server, client, msg->seq, true, "Left room", NULL);
+
+    // If host left, notify guest that room is closed
+    if (is_host && guest_id != 0) {
+        client_t* guest_client = server_get_client_by_user_id(server, guest_id);
+        if (guest_client) {
+            char notification[256];
+            snprintf(notification, sizeof(notification),
+                     "{\"type\":\"room_closed\",\"payload\":{\"room_code\":\"%s\",\"reason\":\"host_left\"}}\n",
+                     room_code);
+            send_to_client(server, guest_client->fd, notification);
+        }
+    }
+
+    // If guest left, notify host
+    if (!is_host) {
+        client_t* host_client = server_get_client_by_user_id(server, host_id);
+        if (host_client) {
+            char notification[256];
+            snprintf(notification, sizeof(notification),
+                     "{\"type\":\"room_guest_left\",\"payload\":{\"room_code\":\"%s\"}}\n",
+                     room_code);
+            send_to_client(server, host_client->fd, notification);
+        }
+    }
+
+    // Broadcast room list update
+    char* rooms_json = lobby_get_rooms_json();
+    if (rooms_json) {
+        char broadcast_msg[16384];
+        snprintf(broadcast_msg, sizeof(broadcast_msg),
+                 "{\"type\":\"rooms_update\",\"payload\":%s}\n", rooms_json);
+        broadcast_to_lobby(server, broadcast_msg);
+        free(rooms_json);
+    }
+
+    printf("[Handler] User %d left room %s\n", user_id, room_code);
+}
+
+// Handler: Get Rooms
+void handle_get_rooms(server_t* server, client_t* client, message_t* msg) {
+    // Validate token
+    int user_id;
+    if (!validate_token_and_get_user(msg->token, &user_id)) {
+        send_response(server, client, msg->seq, false, "Invalid or expired token", NULL);
+        return;
+    }
+    client->user_id = user_id;
+    client->authenticated = true;
+
+    // Get rooms list
+    char* rooms_json = lobby_get_rooms_json();
+    if (!rooms_json) {
+        send_response(server, client, msg->seq, false, "Failed to get rooms", NULL);
+        return;
+    }
+
+    char payload[16384];
+    snprintf(payload, sizeof(payload), "{\"rooms\":%s}", rooms_json);
+    send_response(server, client, msg->seq, true, "Rooms list", payload);
+
+    free(rooms_json);
+}
+
+// Handler: Start Room Game
+void handle_start_room_game(server_t* server, client_t* client, message_t* msg) {
+    // Validate token
+    int user_id;
+    if (!validate_token_and_get_user(msg->token, &user_id)) {
+        send_response(server, client, msg->seq, false, "Invalid or expired token", NULL);
+        return;
+    }
+    client->user_id = user_id;
+    client->authenticated = true;
+
+    // Parse payload
+    const char* room_code = json_get_string(msg->payload_json, "room_code");
+    if (!room_code) {
+        send_response(server, client, msg->seq, false, "Room code required", NULL);
+        return;
+    }
+
+    // Get room
+    room_t* room = lobby_get_room(room_code);
+    if (!room) {
+        send_response(server, client, msg->seq, false, "Room not found", NULL);
+        return;
+    }
+
+    // Only host can start
+    if (room->host_user_id != user_id) {
+        send_response(server, client, msg->seq, false, "Only host can start game", NULL);
+        return;
+    }
+
+    // Need a guest to start
+    if (room->guest_user_id == 0) {
+        send_response(server, client, msg->seq, false, "Need an opponent to start", NULL);
+        return;
+    }
+
+    int host_id = room->host_user_id;
+    int guest_id = room->guest_user_id;
+    bool rated = room->rated;
+
+    // Create match (10 minutes = 600000 ms default)
+    char* match_id = match_create(host_id, guest_id, rated, 600000);
+    if (!match_id) {
+        send_response(server, client, msg->seq, false, "Failed to create match", NULL);
+        return;
+    }
+
+    // Get player info
+    char host_username[64] = {0}, guest_username[64] = {0};
+    int host_rating = 1500, guest_rating = 1500;
+    db_get_user_by_id(host_id, host_username, NULL, &host_rating, NULL, NULL, NULL);
+    db_get_user_by_id(guest_id, guest_username, NULL, &guest_rating, NULL, NULL, NULL);
+
+    // Send match_found to host (red)
+    char host_payload[512];
+    snprintf(host_payload, sizeof(host_payload),
+             "{\"match_id\":\"%s\",\"color\":\"red\",\"opponent_id\":%d,"
+             "\"opponent_name\":\"%s\",\"opponent_rating\":%d,\"rated\":%s}",
+             match_id, guest_id, guest_username, guest_rating,
+             rated ? "true" : "false");
+    
+    char host_msg[MAX_MESSAGE_SIZE];
+    snprintf(host_msg, sizeof(host_msg),
+             "{\"type\":\"match_found\",\"payload\":%s}\n", host_payload);
+    send_to_client(server, client->fd, host_msg);
+
+    // Send match_found to guest (black)
+    char guest_payload[512];
+    snprintf(guest_payload, sizeof(guest_payload),
+             "{\"match_id\":\"%s\",\"color\":\"black\",\"opponent_id\":%d,"
+             "\"opponent_name\":\"%s\",\"opponent_rating\":%d,\"rated\":%s}",
+             match_id, host_id, host_username, host_rating,
+             rated ? "true" : "false");
+    
+    client_t* guest_client = server_get_client_by_user_id(server, guest_id);
+    if (guest_client) {
+        char guest_msg[MAX_MESSAGE_SIZE];
+        snprintf(guest_msg, sizeof(guest_msg),
+                 "{\"type\":\"match_found\",\"payload\":%s}\n", guest_payload);
+        send_to_client(server, guest_client->fd, guest_msg);
+    }
+
+    // Close the room
+    lobby_close_room(room_code, host_id);
+
+    // Broadcast room list update
+    char* rooms_json = lobby_get_rooms_json();
+    if (rooms_json) {
+        char broadcast_msg[16384];
+        snprintf(broadcast_msg, sizeof(broadcast_msg),
+                 "{\"type\":\"rooms_update\",\"payload\":%s}\n", rooms_json);
+        broadcast_to_lobby(server, broadcast_msg);
+        free(rooms_json);
+    }
+
+    printf("[Handler] Room game started: %s -> match %s\n", room_code, match_id);
+    free(match_id);
+}
+
+// Handler: Rematch Request
+void handle_rematch_request(server_t* server, client_t* client, message_t* msg) {
+    // Validate token
+    int user_id;
+    if (!validate_token_and_get_user(msg->token, &user_id)) {
+        send_response(server, client, msg->seq, false, "Invalid or expired token", NULL);
+        return;
+    }
+    client->user_id = user_id;
+    client->authenticated = true;
+
+    // Parse payload
+    const char* match_id = json_get_string(msg->payload_json, "match_id");
+    if (!match_id) {
+        send_response(server, client, msg->seq, false, "Match ID required", NULL);
+        return;
+    }
+
+    // Get original match to find opponent
+    match_t* match = match_get(match_id);
+    if (!match) {
+        send_response(server, client, msg->seq, false, "Match not found", NULL);
+        return;
+    }
+
+    // Verify user was in this match
+    if (match->red_user_id != user_id && match->black_user_id != user_id) {
+        send_response(server, client, msg->seq, false, "Not in this match", NULL);
+        return;
+    }
+
+    // Find opponent
+    int opponent_id = (match->red_user_id == user_id) ? match->black_user_id : match->red_user_id;
+
+    // Get requester username
+    char username[64] = {0};
+    db_get_username(user_id, username, sizeof(username));
+
+    // Send rematch request to opponent
+    client_t* opponent_client = server_get_client_by_user_id(server, opponent_id);
+    if (!opponent_client) {
+        send_response(server, client, msg->seq, false, "Opponent not online", NULL);
+        return;
+    }
+
+    char notification[512];
+    snprintf(notification, sizeof(notification),
+             "{\"type\":\"rematch_request\",\"payload\":{\"match_id\":\"%s\",\"from_user_id\":%d,\"from_username\":\"%s\"}}\n",
+             match_id, user_id, username);
+    send_to_client(server, opponent_client->fd, notification);
+
+    send_response(server, client, msg->seq, true, "Rematch request sent", NULL);
+    printf("[Handler] Rematch request from user %d to user %d (match: %s)\n", user_id, opponent_id, match_id);
+}
+
+// Handler: Rematch Response
+void handle_rematch_response(server_t* server, client_t* client, message_t* msg) {
+    // Validate token
+    int user_id;
+    if (!validate_token_and_get_user(msg->token, &user_id)) {
+        send_response(server, client, msg->seq, false, "Invalid or expired token", NULL);
+        return;
+    }
+    client->user_id = user_id;
+    client->authenticated = true;
+
+    // Parse payload
+    const char* match_id = json_get_string(msg->payload_json, "match_id");
+    bool accept = json_get_bool(msg->payload_json, "accept");
+    
+    if (!match_id) {
+        send_response(server, client, msg->seq, false, "Match ID required", NULL);
+        return;
+    }
+
+    // Get original match
+    match_t* old_match = match_get(match_id);
+    if (!old_match) {
+        send_response(server, client, msg->seq, false, "Match not found", NULL);
+        return;
+    }
+
+    // Find opponent (the one who sent the request)
+    int opponent_id = (old_match->red_user_id == user_id) ? old_match->black_user_id : old_match->red_user_id;
+    client_t* opponent_client = server_get_client_by_user_id(server, opponent_id);
+
+    if (!accept) {
+        // Declined
+        send_response(server, client, msg->seq, true, "Rematch declined", NULL);
+        
+        if (opponent_client) {
+            char notification[256];
+            snprintf(notification, sizeof(notification),
+                     "{\"type\":\"rematch_declined\",\"payload\":{\"match_id\":\"%s\"}}\n",
+                     match_id);
+            send_to_client(server, opponent_client->fd, notification);
+        }
+        printf("[Handler] Rematch declined by user %d\n", user_id);
+        return;
+    }
+
+    // Accepted - create new match with swapped colors
+    int new_red = old_match->black_user_id;  // Previous black is now red
+    int new_black = old_match->red_user_id;  // Previous red is now black
+    bool rated = old_match->rated;
+    int time_ms = old_match->red_time_ms > 0 ? old_match->red_time_ms : 600000;
+
+    char* new_match_id = match_create(new_red, new_black, rated, time_ms);
+    if (!new_match_id) {
+        send_response(server, client, msg->seq, false, "Failed to create rematch", NULL);
+        return;
+    }
+
+    // Get player info
+    char red_username[64] = {0}, black_username[64] = {0};
+    int red_rating = 1500, black_rating = 1500;
+    db_get_user_by_id(new_red, red_username, NULL, &red_rating, NULL, NULL, NULL);
+    db_get_user_by_id(new_black, black_username, NULL, &black_rating, NULL, NULL, NULL);
+
+    // Send match_found to new red player (the one who accepted)
+    char red_payload[512];
+    snprintf(red_payload, sizeof(red_payload),
+             "{\"match_id\":\"%s\",\"color\":\"red\",\"opponent_id\":%d,"
+             "\"opponent_name\":\"%s\",\"opponent_rating\":%d,\"rated\":%s,\"rematch\":true}",
+             new_match_id, new_black, black_username, black_rating,
+             rated ? "true" : "false");
+
+    // Determine which client gets which color
+    client_t* red_client = server_get_client_by_user_id(server, new_red);
+    client_t* black_client = server_get_client_by_user_id(server, new_black);
+
+    if (red_client) {
+        char red_msg[MAX_MESSAGE_SIZE];
+        snprintf(red_msg, sizeof(red_msg),
+                 "{\"type\":\"match_found\",\"payload\":%s}\n", red_payload);
+        send_to_client(server, red_client->fd, red_msg);
+    }
+
+    // Send match_found to new black player (the one who requested)
+    char black_payload[512];
+    snprintf(black_payload, sizeof(black_payload),
+             "{\"match_id\":\"%s\",\"color\":\"black\",\"opponent_id\":%d,"
+             "\"opponent_name\":\"%s\",\"opponent_rating\":%d,\"rated\":%s,\"rematch\":true}",
+             new_match_id, new_red, red_username, red_rating,
+             rated ? "true" : "false");
+
+    if (black_client) {
+        char black_msg[MAX_MESSAGE_SIZE];
+        snprintf(black_msg, sizeof(black_msg),
+                 "{\"type\":\"match_found\",\"payload\":%s}\n", black_payload);
+        send_to_client(server, black_client->fd, black_msg);
+    }
+
+    send_response(server, client, msg->seq, true, "Rematch accepted", NULL);
+    printf("[Handler] Rematch created: %s (colors swapped)\n", new_match_id);
+    free(new_match_id);
+}
+
+// Handler: Match History
+void handle_match_history(server_t* server, client_t* client, message_t* msg) {
+    // Validate token
+    int user_id;
+    if (!validate_token_and_get_user(msg->token, &user_id)) {
+        send_response(server, client, msg->seq, false, "Invalid or expired token", NULL);
+        return;
+    }
+    client->user_id = user_id;
+    client->authenticated = true;
+
+    // Parse payload
+    int limit = json_get_int(msg->payload_json, "limit");
+    int offset = json_get_int(msg->payload_json, "offset");
+    
+    if (limit <= 0) limit = 20;
+    if (limit > 100) limit = 100;
+    if (offset < 0) offset = 0;
+
+    // Get match history
+    char history_json[16384];
+    if (!db_get_match_history(user_id, limit, offset, history_json, sizeof(history_json))) {
+        send_response(server, client, msg->seq, false, "Failed to get match history", NULL);
+        return;
+    }
+
+    char payload[16500];
+    snprintf(payload, sizeof(payload), "{\"matches\":%s}", history_json);
+    send_response(server, client, msg->seq, true, "Match history", payload);
+
+    printf("[Handler] Match history for user %d (limit=%d, offset=%d)\n", user_id, limit, offset);
+}
+
+// =========================
+// Spectator Handlers
+// =========================
+
+// Get list of live matches for spectating
+void handle_get_live_matches(server_t* server, client_t* client, message_t* msg) {
+    // Validate token
+    int user_id;
+    if (!validate_token_and_get_user(msg->token, &user_id)) {
+        send_response(server, client, msg->seq, false, "Invalid or expired token", NULL);
+        return;
+    }
+    client->user_id = user_id;
+    client->authenticated = true;
+
+    char* live_matches_json = match_get_live_matches_json();
+    if (!live_matches_json) {
+        send_response(server, client, msg->seq, false, "Failed to get live matches", NULL);
+        return;
+    }
+
+    char* payload = malloc(strlen(live_matches_json) + 128);
+    if (!payload) {
+        free(live_matches_json);
+        send_response(server, client, msg->seq, false, "Memory allocation failed", NULL);
+        return;
+    }
+
+    sprintf(payload, "{\"matches\":%s}", live_matches_json);
+    send_response(server, client, msg->seq, true, "Live matches", payload);
+
+    free(live_matches_json);
+    free(payload);
+
+    printf("[Handler] Get live matches for user %d\n", user_id);
+}
+
+// Join a match as spectator
+void handle_join_spectate(server_t* server, client_t* client, message_t* msg) {
+    // Validate token
+    int user_id;
+    if (!validate_token_and_get_user(msg->token, &user_id)) {
+        send_response(server, client, msg->seq, false, "Invalid or expired token", NULL);
+        return;
+    }
+    client->user_id = user_id;
+    client->authenticated = true;
+
+    // Get match_id
+    char* match_id = json_get_string(msg->payload_json, "match_id");
+    if (!match_id || strlen(match_id) == 0) {
+        send_response(server, client, msg->seq, false, "Match ID required", NULL);
+        return;
+    }
+
+    // Get match
+    match_t* match = match_get(match_id);
+    if (!match) {
+        send_response(server, client, msg->seq, false, "Match not found", NULL);
+        return;
+    }
+
+    if (!match->active) {
+        send_response(server, client, msg->seq, false, "Match has ended", NULL);
+        return;
+    }
+
+    // Check if user is a player in this match
+    if (match->red_user_id == user_id || match->black_user_id == user_id) {
+        send_response(server, client, msg->seq, false, "You are a player in this match", NULL);
+        return;
+    }
+
+    // Add as spectator
+    if (!match_add_spectator(match_id, user_id)) {
+        send_response(server, client, msg->seq, false, "Cannot join as spectator (room full)", NULL);
+        return;
+    }
+
+    // Get current match state
+    char* match_json = match_get_json(match_id);
+    if (!match_json) {
+        send_response(server, client, msg->seq, false, "Failed to get match data", NULL);
+        return;
+    }
+
+    char* payload = malloc(strlen(match_json) + 256);
+    if (!payload) {
+        free(match_json);
+        send_response(server, client, msg->seq, false, "Memory allocation failed", NULL);
+        return;
+    }
+
+    sprintf(payload, "{\"match_id\":\"%s\",\"spectator_count\":%d,\"match\":%s}",
+            match_id, match->spectator_count, match_json);
+
+    send_response(server, client, msg->seq, true, "Joined as spectator", payload);
+
+    free(match_json);
+    free(payload);
+
+    printf("[Handler] User %d joined match %s as spectator (count: %d)\n", 
+           user_id, match_id, match->spectator_count);
+}
+
+// Leave spectating a match
+void handle_leave_spectate(server_t* server, client_t* client, message_t* msg) {
+    // Validate token
+    int user_id;
+    if (!validate_token_and_get_user(msg->token, &user_id)) {
+        send_response(server, client, msg->seq, false, "Invalid or expired token", NULL);
+        return;
+    }
+    client->user_id = user_id;
+    client->authenticated = true;
+
+    // Get match_id
+    char* match_id = json_get_string(msg->payload_json, "match_id");
+    if (!match_id || strlen(match_id) == 0) {
+        send_response(server, client, msg->seq, false, "Match ID required", NULL);
+        return;
+    }
+
+    // Remove spectator
+    if (!match_remove_spectator(match_id, user_id)) {
+        send_response(server, client, msg->seq, false, "Not spectating this match", NULL);
+        return;
+    }
+
+    send_response(server, client, msg->seq, true, "Left spectating", NULL);
+
+    printf("[Handler] User %d left spectating match %s\n", user_id, match_id);
+}
+
+// =========================
+// Profile Handler
+// =========================
+
+void handle_get_profile(server_t* server, client_t* client, message_t* msg) {
+    // Validate token
+    int user_id;
+    if (!validate_token_and_get_user(msg->token, &user_id)) {
+        send_response(server, client, msg->seq, false, "Invalid or expired token", NULL);
+        return;
+    }
+    client->user_id = user_id;
+    client->authenticated = true;
+
+    // Check if requesting another user's profile
+    int target_user_id = json_get_int(msg->payload_json, "user_id");
+    if (target_user_id <= 0) {
+        target_user_id = user_id; // Default to own profile
+    }
+
+    // Get profile from database
+    char profile_json[2048];
+    if (!db_get_user_profile(target_user_id, profile_json, sizeof(profile_json))) {
+        send_response(server, client, msg->seq, false, "User not found", NULL);
+        return;
+    }
+
+    // Wrap in payload
+    char payload[2200];
+    snprintf(payload, sizeof(payload), "{\"profile\":%s}", profile_json);
+
+    send_response(server, client, msg->seq, true, "Profile data", payload);
+
+    printf("[Handler] Get profile for user %d (requested by %d)\n", target_user_id, user_id);
+}
+
+// =========================
+// Timer Handler
+// =========================
+
+void handle_get_timer(server_t* server, client_t* client, message_t* msg) {
+    // Validate token
+    int user_id;
+    if (!validate_token_and_get_user(msg->token, &user_id)) {
+        send_response(server, client, msg->seq, false, "Invalid or expired token", NULL);
+        return;
+    }
+    client->user_id = user_id;
+    client->authenticated = true;
+
+    // Get match_id
+    const char* match_id = json_get_string(msg->payload_json, "match_id");
+    if (!match_id || strlen(match_id) == 0) {
+        // Try to find user's active match
+        match_t* match = match_find_by_user(user_id);
+        if (!match) {
+            send_response(server, client, msg->seq, false, "No active match", NULL);
+            return;
+        }
+        match_id = match->match_id;
+    }
+
+    // Get timer data
+    char* timer_json = match_get_timer_json(match_id);
+    if (!timer_json) {
+        send_response(server, client, msg->seq, false, "Match not found", NULL);
+        return;
+    }
+
+    char payload[512];
+    snprintf(payload, sizeof(payload), "{\"timer\":%s}", timer_json);
+    send_response(server, client, msg->seq, true, "Timer data", payload);
+
+    free(timer_json);
+}
+
 // Dispatcher: Route message to appropriate handler
 void dispatch_handler(server_t* server, client_t* client, message_t* msg) {
     if (!msg->type) {
@@ -1017,6 +1765,32 @@ void dispatch_handler(server_t* server, client_t* client, message_t* msg) {
         handle_heartbeat(server, client, msg);
     } else if (strcmp(msg->type, "chat_message") == 0) {
         handle_chat_message(server, client, msg);
+    } else if (strcmp(msg->type, "create_room") == 0) {
+        handle_create_room(server, client, msg);
+    } else if (strcmp(msg->type, "join_room") == 0) {
+        handle_join_room(server, client, msg);
+    } else if (strcmp(msg->type, "leave_room") == 0) {
+        handle_leave_room(server, client, msg);
+    } else if (strcmp(msg->type, "get_rooms") == 0) {
+        handle_get_rooms(server, client, msg);
+    } else if (strcmp(msg->type, "start_room_game") == 0) {
+        handle_start_room_game(server, client, msg);
+    } else if (strcmp(msg->type, "rematch_request") == 0) {
+        handle_rematch_request(server, client, msg);
+    } else if (strcmp(msg->type, "rematch_response") == 0) {
+        handle_rematch_response(server, client, msg);
+    } else if (strcmp(msg->type, "match_history") == 0) {
+        handle_match_history(server, client, msg);
+    } else if (strcmp(msg->type, "get_live_matches") == 0) {
+        handle_get_live_matches(server, client, msg);
+    } else if (strcmp(msg->type, "join_spectate") == 0) {
+        handle_join_spectate(server, client, msg);
+    } else if (strcmp(msg->type, "leave_spectate") == 0) {
+        handle_leave_spectate(server, client, msg);
+    } else if (strcmp(msg->type, "get_profile") == 0) {
+        handle_get_profile(server, client, msg);
+    } else if (strcmp(msg->type, "get_timer") == 0) {
+        handle_get_timer(server, client, msg);
     } else {
         fprintf(stderr, "[Dispatcher] Unknown message type: %s\n", msg->type);
         send_response(server, client, msg->seq, false, "Unknown message type", NULL);

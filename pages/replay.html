@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xem Lại Trận Đấu - Cờ Tướng Online</title>
+    <link rel="stylesheet" href="../public/css/board.css">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+        }
+
+        .replay-page {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .replay-header {
+            background: #16213e;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+
+        .replay-header h1 {
+            margin: 0;
+            color: white;
+            font-size: 1.5em;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        .replay-content {
+            flex: 1;
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        /* History List Panel */
+        .history-panel {
+            width: 350px;
+            background: #16213e;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            overflow-y: auto;
+        }
+
+        .history-panel h2 {
+            margin: 0 0 20px 0;
+            color: white;
+            font-size: 1.2em;
+        }
+
+        .match-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .match-item {
+            background: #1a1a2e;
+            border-radius: 10px;
+            padding: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+
+        .match-item:hover {
+            border-color: #667eea;
+            transform: translateX(5px);
+        }
+
+        .match-item.active {
+            border-color: #667eea;
+            background: #252550;
+        }
+
+        .match-item .opponent {
+            color: white;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .match-item .details {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #888;
+        }
+
+        .match-item .result {
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+
+        .match-item .result.win {
+            background: #28a745;
+            color: white;
+        }
+
+        .match-item .result.loss {
+            background: #dc3545;
+            color: white;
+        }
+
+        .match-item .result.draw {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .no-matches {
+            text-align: center;
+            color: #666;
+            padding: 40px 20px;
+        }
+
+        /* Replay Board Panel */
+        .replay-board-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .match-info-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 600px;
+            background: #16213e;
+            border-radius: 10px;
+            padding: 15px 25px;
+        }
+
+        .player-info {
+            text-align: center;
+            color: white;
+        }
+
+        .player-info .name {
+            font-weight: 600;
+            font-size: 1.1em;
+        }
+
+        .player-info .color {
+            font-size: 12px;
+            color: #888;
+        }
+
+        .player-info.red .color {
+            color: #ff6b6b;
+        }
+
+        .player-info.black .color {
+            color: #aaa;
+        }
+
+        .vs-badge {
+            font-size: 1.5em;
+            color: #667eea;
+            font-weight: bold;
+        }
+
+        .board-container {
+            position: relative;
+        }
+
+        /* Replay Controls */
+        .replay-controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: #16213e;
+            padding: 15px 25px;
+            border-radius: 10px;
+        }
+
+        .control-btn {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            border: none;
+            background: #252550;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .control-btn:hover {
+            background: #667eea;
+            transform: scale(1.1);
+        }
+
+        .control-btn:disabled {
+            background: #333;
+            color: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .control-btn.play-pause {
+            width: 55px;
+            height: 55px;
+            font-size: 22px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .move-slider {
+            flex: 1;
+            -webkit-appearance: none;
+            height: 6px;
+            border-radius: 3px;
+            background: #333;
+            outline: none;
+        }
+
+        .move-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+        }
+
+        .move-counter {
+            color: white;
+            font-size: 14px;
+            min-width: 80px;
+            text-align: center;
+        }
+
+        /* Moves List Panel */
+        .moves-panel {
+            width: 250px;
+            background: #16213e;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            overflow-y: auto;
+        }
+
+        .moves-panel h3 {
+            margin: 0 0 15px 0;
+            color: white;
+            font-size: 1em;
+        }
+
+        .moves-list {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .move-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            background: #1a1a2e;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #ccc;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .move-item:hover {
+            background: #252550;
+        }
+
+        .move-item.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .move-item .num {
+            color: #666;
+            min-width: 25px;
+        }
+
+        .move-item .move-text {
+            flex: 1;
+        }
+
+        .move-item .move-text.red {
+            color: #ff6b6b;
+        }
+
+        .move-item .move-text.black {
+            color: #aaa;
+        }
+
+        .move-item.active .move-text {
+            color: white;
+        }
+
+        /* Loading state */
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: white;
+        }
+
+        .loading .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #333;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* No match selected state */
+        .no-match-selected {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #666;
+            text-align: center;
+        }
+
+        .no-match-selected .icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="replay-page">
+        <header class="replay-header">
+            <h1>📹 Xem Lại Trận Đấu</h1>
+            <button class="btn btn-secondary" id="btn-back">← Về Lobby</button>
+        </header>
+
+        <div class="replay-content">
+            <!-- Match History List -->
+            <div class="history-panel">
+                <h2>📜 Lịch Sử Trận Đấu</h2>
+                <div class="match-list" id="match-list">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Đang tải...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Replay Board -->
+            <div class="replay-board-panel" id="replay-board-panel">
+                <div class="no-match-selected">
+                    <div class="icon">🎮</div>
+                    <h2>Chọn trận đấu để xem lại</h2>
+                    <p>Danh sách trận đấu ở bên trái</p>
+                </div>
+            </div>
+
+            <!-- Moves List -->
+            <div class="moves-panel" id="moves-panel" style="display: none;">
+                <h3>📝 Các Nước Đi</h3>
+                <div class="moves-list" id="moves-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import NetworkGameController from '../src/core/networkGameController.js?v=7';
+        import Board from '../src/core/board.js';
+
+        // Check authentication
+        const userDataStr = localStorage.getItem('xiangqi_user');
+        if (!userDataStr) {
+            window.location.href = 'login.html';
+        }
+        const userData = JSON.parse(userDataStr);
+
+        // Game controller for network
+        let gameController = null;
+        let currentMatchData = null;
+        let moves = [];
+        let currentMoveIndex = -1;
+        let isPlaying = false;
+        let playInterval = null;
+        let board = null;
+
+        // Initialize
+        (async () => {
+            // Connect to server
+            const serverInfoStr = localStorage.getItem('xiangqi_server');
+            if (!serverInfoStr) {
+                alert('Chưa kết nối server');
+                window.location.href = 'login.html';
+                return;
+            }
+
+            const serverInfo = JSON.parse(serverInfoStr);
+            gameController = new NetworkGameController();
+
+            try {
+                await gameController.connectToServer(serverInfo.host, serverInfo.port);
+                
+                // Restore token
+                if (userData.token) {
+                    gameController.token = userData.token;
+                    if (gameController.network) {
+                        gameController.network.sessionToken = userData.token;
+                    }
+                }
+
+                // Load match history
+                await loadMatchHistory();
+            } catch (error) {
+                console.error('Connection failed:', error);
+                document.getElementById('match-list').innerHTML = 
+                    '<div class="no-matches"><p>❌ Không thể kết nối server</p></div>';
+            }
+        })();
+
+        // Load match history
+        async function loadMatchHistory() {
+            try {
+                const response = await gameController.network.getMatchHistory(50, 0);
+                const matches = response.payload?.matches || [];
+                displayMatchList(matches);
+            } catch (error) {
+                console.error('Failed to load history:', error);
+                document.getElementById('match-list').innerHTML = 
+                    '<div class="no-matches"><p>❌ Không thể tải lịch sử</p></div>';
+            }
+        }
+
+        // Display match list
+        function displayMatchList(matches) {
+            const container = document.getElementById('match-list');
+            
+            if (!matches || matches.length === 0) {
+                container.innerHTML = '<div class="no-matches"><p>😢 Chưa có trận đấu nào</p></div>';
+                return;
+            }
+
+            container.innerHTML = matches.map(match => {
+                const resultClass = match.result === 'win' ? 'win' : 
+                                   match.result === 'loss' ? 'loss' : 'draw';
+                const resultText = match.result === 'win' ? 'Thắng' : 
+                                  match.result === 'loss' ? 'Thua' : 'Hòa';
+                const colorIcon = match.my_color === 'red' ? '🔴' : '⚫';
+                
+                // Format date
+                const date = new Date(match.ended_at);
+                const dateStr = date.toLocaleDateString('vi-VN');
+                
+                return `
+                    <div class="match-item" data-match-id="${match.match_id}">
+                        <div class="opponent">${colorIcon} vs ${match.opponent}</div>
+                        <div class="details">
+                            <span>${dateStr}</span>
+                            <span class="result ${resultClass}">${resultText}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Add click handlers
+            container.querySelectorAll('.match-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    container.querySelectorAll('.match-item').forEach(i => i.classList.remove('active'));
+                    item.classList.add('active');
+                    loadMatchReplay(item.dataset.matchId);
+                });
+            });
+        }
+
+        // Load match replay
+        async function loadMatchReplay(matchId) {
+            const boardPanel = document.getElementById('replay-board-panel');
+            boardPanel.innerHTML = '<div class="loading"><div class="spinner"></div><p>Đang tải trận đấu...</p></div>';
+            document.getElementById('moves-panel').style.display = 'none';
+
+            try {
+                const response = await gameController.network.getMatchDetails(matchId);
+                currentMatchData = response.payload;
+                
+                // Parse moves
+                if (typeof currentMatchData.moves === 'string') {
+                    moves = JSON.parse(currentMatchData.moves);
+                } else {
+                    moves = currentMatchData.moves || [];
+                }
+                
+                currentMoveIndex = -1;
+                isPlaying = false;
+                if (playInterval) clearInterval(playInterval);
+
+                // Create replay UI
+                createReplayUI();
+                
+            } catch (error) {
+                console.error('Failed to load match:', error);
+                boardPanel.innerHTML = '<div class="no-match-selected"><div class="icon">❌</div><h2>Không thể tải trận đấu</h2></div>';
+            }
+        }
+
+        // Create replay UI
+        function createReplayUI() {
+            const boardPanel = document.getElementById('replay-board-panel');
+            const resultText = currentMatchData.result === 'red_wins' ? 'Đỏ thắng' :
+                              currentMatchData.result === 'black_wins' ? 'Đen thắng' : 'Hòa';
+
+            boardPanel.innerHTML = `
+                <div class="match-info-bar">
+                    <div class="player-info red">
+                        <div class="name">🔴 ${currentMatchData.red_user}</div>
+                        <div class="color">Quân Đỏ</div>
+                    </div>
+                    <div class="vs-badge">${resultText}</div>
+                    <div class="player-info black">
+                        <div class="name">⚫ ${currentMatchData.black_user}</div>
+                        <div class="color">Quân Đen</div>
+                    </div>
+                </div>
+
+                <div class="board-container">
+                    <div id="replay-board"></div>
+                </div>
+
+                <div class="replay-controls">
+                    <button class="control-btn" id="btn-first" title="Đầu tiên">⏮</button>
+                    <button class="control-btn" id="btn-prev" title="Nước trước">◀</button>
+                    <button class="control-btn play-pause" id="btn-play" title="Phát/Dừng">▶</button>
+                    <button class="control-btn" id="btn-next" title="Nước sau">▶</button>
+                    <button class="control-btn" id="btn-last" title="Cuối cùng">⏭</button>
+                    <input type="range" class="move-slider" id="move-slider" min="-1" max="${moves.length - 1}" value="-1">
+                    <div class="move-counter" id="move-counter">0 / ${moves.length}</div>
+                </div>
+            `;
+
+            // Initialize board
+            board = new Board('replay-board');
+            board.initializeBoard();
+            board.render();
+
+            // Setup controls
+            setupReplayControls();
+
+            // Show moves panel
+            displayMovesList();
+            document.getElementById('moves-panel').style.display = '';
+        }
+
+        // Setup replay controls
+        function setupReplayControls() {
+            document.getElementById('btn-first').addEventListener('click', goToFirst);
+            document.getElementById('btn-prev').addEventListener('click', goToPrev);
+            document.getElementById('btn-play').addEventListener('click', togglePlay);
+            document.getElementById('btn-next').addEventListener('click', goToNext);
+            document.getElementById('btn-last').addEventListener('click', goToLast);
+            
+            const slider = document.getElementById('move-slider');
+            slider.addEventListener('input', (e) => {
+                goToMove(parseInt(e.target.value));
+            });
+        }
+
+        // Replay navigation
+        function goToFirst() {
+            goToMove(-1);
+        }
+
+        function goToPrev() {
+            if (currentMoveIndex >= 0) {
+                goToMove(currentMoveIndex - 1);
+            }
+        }
+
+        function goToNext() {
+            if (currentMoveIndex < moves.length - 1) {
+                goToMove(currentMoveIndex + 1);
+            }
+        }
+
+        function goToLast() {
+            goToMove(moves.length - 1);
+        }
+
+        function goToMove(index) {
+            // Reset board
+            board.initializeBoard();
+            
+            // Replay moves up to index
+            for (let i = 0; i <= index && i < moves.length; i++) {
+                const move = moves[i];
+                board.movePiece(move.from.row, move.from.col, move.to.row, move.to.col);
+            }
+            
+            board.render();
+            currentMoveIndex = index;
+            updateUI();
+        }
+
+        function togglePlay() {
+            isPlaying = !isPlaying;
+            const btn = document.getElementById('btn-play');
+            
+            if (isPlaying) {
+                btn.textContent = '⏸';
+                playInterval = setInterval(() => {
+                    if (currentMoveIndex < moves.length - 1) {
+                        goToNext();
+                    } else {
+                        togglePlay(); // Stop at end
+                    }
+                }, 1500);
+            } else {
+                btn.textContent = '▶';
+                if (playInterval) {
+                    clearInterval(playInterval);
+                    playInterval = null;
+                }
+            }
+        }
+
+        function updateUI() {
+            // Update slider
+            document.getElementById('move-slider').value = currentMoveIndex;
+            
+            // Update counter
+            document.getElementById('move-counter').textContent = 
+                `${currentMoveIndex + 1} / ${moves.length}`;
+            
+            // Update buttons
+            document.getElementById('btn-first').disabled = currentMoveIndex < 0;
+            document.getElementById('btn-prev').disabled = currentMoveIndex < 0;
+            document.getElementById('btn-next').disabled = currentMoveIndex >= moves.length - 1;
+            document.getElementById('btn-last').disabled = currentMoveIndex >= moves.length - 1;
+            
+            // Update moves list highlight
+            document.querySelectorAll('.move-item').forEach((item, i) => {
+                item.classList.toggle('active', i === currentMoveIndex);
+            });
+        }
+
+        // Display moves list
+        function displayMovesList() {
+            const container = document.getElementById('moves-list');
+            
+            if (!moves || moves.length === 0) {
+                container.innerHTML = '<p style="color:#666;text-align:center;">Không có nước đi</p>';
+                return;
+            }
+
+            container.innerHTML = moves.map((move, i) => {
+                const colorClass = move.color || (i % 2 === 0 ? 'red' : 'black');
+                const colorName = colorClass === 'red' ? 'Đỏ' : 'Đen';
+                const moveText = `(${move.from.row},${move.from.col}) → (${move.to.row},${move.to.col})`;
+                
+                return `
+                    <div class="move-item" data-index="${i}">
+                        <span class="num">${i + 1}.</span>
+                        <span class="move-text ${colorClass}">${colorName}: ${moveText}</span>
+                    </div>
+                `;
+            }).join('');
+
+            // Add click handlers
+            container.querySelectorAll('.move-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    goToMove(parseInt(item.dataset.index));
+                });
+            });
+        }
+
+        // Back button
+        document.getElementById('btn-back').addEventListener('click', () => {
+            window.location.href = 'lobby.html';
+        });
+    </script>
+</body>
+</html>

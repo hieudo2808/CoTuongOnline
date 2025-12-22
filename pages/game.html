@@ -522,6 +522,7 @@
                 </div>
             </div>
             <div class="modal-actions">
+                <button class="btn btn-warning" id="btn-rematch">🔄 Đấu Lại</button>
                 <button class="btn btn-primary" id="btn-new-game">Trận Mới</button>
                 <button class="btn btn-secondary" id="btn-to-lobby">Lobby</button>
             </div>
@@ -540,12 +541,40 @@
         </div>
     </div>
 
+    <!-- Rematch Request Modal -->
+    <div class="modal" id="rematch-modal">
+        <div class="modal-content">
+            <h2>🔄 Yêu Cầu Đấu Lại</h2>
+            <p id="rematch-request-text">Đối thủ muốn đấu lại. Bạn đồng ý không?</p>
+            <div class="modal-actions">
+                <button class="btn btn-primary" id="btn-accept-rematch">Đồng Ý</button>
+                <button class="btn btn-danger" id="btn-decline-rematch">Từ Chối</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Waiting for Rematch Response Modal -->
+    <div class="modal" id="rematch-waiting-modal">
+        <div class="modal-content">
+            <h2>⏳ Đang Chờ</h2>
+            <p>Đang chờ đối thủ phản hồi yêu cầu đấu lại...</p>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="btn-cancel-rematch">Hủy</button>
+            </div>
+        </div>
+    </div>
+
     <script type="module">
         import NetworkGameController from '../src/core/networkGameController.js?v=7';
 
         // 1. Khởi tạo dữ liệu
         const userDataStr = localStorage.getItem('xiangqi_user');
         const matchDataStr = localStorage.getItem('current_match');
+        const spectateDataStr = localStorage.getItem('spectate_match');
+
+        // Check for spectate mode
+        const urlParams = new URLSearchParams(window.location.search);
+        const isSpectateMode = urlParams.get('mode') === 'spectate';
 
         if (!userDataStr) {
             window.location.href = 'login.html';
@@ -553,13 +582,37 @@
 
         const userData = JSON.parse(userDataStr);
         let matchData = matchDataStr ? JSON.parse(matchDataStr) : null;
+        let spectateData = spectateDataStr ? JSON.parse(spectateDataStr) : null;
 
         // 2. Khởi tạo Controller
         const gameController = new NetworkGameController('xiangqi-board');
         window.gameController = gameController;
 
+        // --- Spectate Mode Setup ---
+        if (isSpectateMode && spectateData) {
+            gameController.matchId = spectateData.match_id;
+            gameController.isOnlineMode = true;
+            gameController.isSpectator = true;
+            gameController.isMyTurn = false; // Spectators can't move
+            
+            // Hide game action buttons for spectators
+            const gameActions = document.querySelector('.game-actions');
+            if (gameActions) {
+                gameActions.innerHTML = `
+                    <span style="color: #28a745; font-weight: 600; margin-right: 10px;">👁️ Đang xem trận đấu</span>
+                    <button class="btn btn-secondary" id="btn-leave-spectate">🚪 Rời Xem</button>
+                `;
+                document.getElementById('btn-leave-spectate')?.addEventListener('click', leaveSpectate);
+            }
+            
+            // Update title
+            const gameTitle = document.querySelector('.game-title');
+            if (gameTitle) {
+                gameTitle.textContent = '👁️ Xem Trận Đấu - Cờ Tướng Online';
+            }
+        }
         // --- QUAN TRỌNG: Nạp ngay thông tin trận đấu để các nút bấm hoạt động ---
-        if (matchData) {
+        else if (matchData) {
             gameController.matchId = matchData.match_id;
             gameController.myColor = matchData.your_color;
             gameController.isOnlineMode = true;
@@ -572,6 +625,19 @@
         let playerTime = 600; 
         let opponentTime = 600;
         let isGameActive = true;
+
+        // Leave spectate function
+        async function leaveSpectate() {
+            try {
+                if (gameController.network && spectateData) {
+                    await gameController.network.leaveSpectate(spectateData.match_id);
+                }
+            } catch (e) {
+                console.warn('Error leaving spectate:', e);
+            }
+            localStorage.removeItem('spectate_match');
+            window.location.href = 'lobby.html';
+        }
 
         // 3. Kết nối Server & Đồng bộ
         (async () => {
@@ -596,8 +662,37 @@
                     if (gameController.network) gameController.network.sessionToken = userData.token;
                 }
 
+                // --- Spectate Mode: Load match state ---
+                if (isSpectateMode && spectateData) {
+                    // Join as spectator - match state is already in spectateData
+                    const matchState = spectateData.match;
+                    
+                    if (matchState) {
+                        // Replay all moves to current board state
+                        gameController.setupBoard({ flipped: false });
+                        
+                        // Apply moves from match history
+                        if (matchState.moves && matchState.moves.length > 0) {
+                            for (const move of matchState.moves) {
+                                gameController.board.movePiece(
+                                    move.from.row, move.from.col,
+                                    move.to.row, move.to.col
+                                );
+                            }
+                            gameController.ui.render();
+                        }
+                        
+                        // Update player panels for spectate
+                        document.querySelector('#player-name')?.textContent && 
+                            (document.querySelector('#player-name').textContent = `🔴 Player #${matchState.red_user_id}`);
+                        document.querySelector('#opponent-name')?.textContent && 
+                            (document.querySelector('#opponent-name').textContent = `⚫ Player #${matchState.black_user_id}`);
+                    }
+                    
+                    console.log('[Spectate] Watching match:', spectateData.match_id);
+                }
                 // Join Match để đồng bộ trạng thái mới nhất từ Server
-                if (matchData) {
+                else if (matchData) {
                     const joinResult = await gameController.joinMatch(matchData.match_id);
                     
                     // Cập nhật lại lượt đi từ server (tránh bị lệch lượt khi refresh)
@@ -619,8 +714,16 @@
 
                 // --- LẮNG NGHE SỰ KIỆN TỪ SERVER ---
                 if (gameController.network) {
-                    // 1. Đối thủ đi quân
+                    // 1. Đối thủ đi quân - sync timer
                     gameController.network.on('opponent_move', (data) => {
+                        let payload = data.payload || data;
+                        if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch(e) {} }
+                        
+                        // Sync timer from server
+                        if (payload.red_time_ms !== undefined && payload.black_time_ms !== undefined) {
+                            syncTimerFromServer(payload.red_time_ms, payload.black_time_ms);
+                        }
+                        
                         updateTurnIndicator();
                     });
 
@@ -707,7 +810,27 @@
             document.getElementById('opponent-rating').textContent = `⭐ ${matchData.opponent_rating || 1500}`;
         }
 
-        // Timer Logic
+        // Timer Logic - values in milliseconds from server
+        let redTimeMs = 600000;  // 10 minutes default
+        let blackTimeMs = 600000;
+        
+        function syncTimerFromServer(redMs, blackMs) {
+            redTimeMs = redMs;
+            blackTimeMs = blackMs;
+            
+            // Update display based on my color
+            if (matchData && matchData.your_color === 'red') {
+                playerTime = Math.ceil(redMs / 1000);
+                opponentTime = Math.ceil(blackMs / 1000);
+            } else {
+                playerTime = Math.ceil(blackMs / 1000);
+                opponentTime = Math.ceil(redMs / 1000);
+            }
+            
+            updateTimerDisplay('player-timer', playerTime);
+            updateTimerDisplay('opponent-timer', opponentTime);
+        }
+        
         function startTimer() {
             if (timerInterval) clearInterval(timerInterval);
             
@@ -720,6 +843,14 @@
                 if (gameController.isMyTurn) {
                     playerTime--;
                     updateTimerDisplay('player-timer', playerTime);
+                    
+                    // Check local timeout warning
+                    if (playerTime <= 30 && playerTime > 0) {
+                        document.getElementById('player-timer').classList.add('warning');
+                    }
+                    if (playerTime <= 0) {
+                        handleTimeout('player');
+                    }
                 } else {
                     opponentTime--;
                     updateTimerDisplay('opponent-timer', opponentTime);
@@ -730,6 +861,32 @@
                 }
             }, 1000);
         }
+        
+        async function handleTimeout(who) {
+            // Server should detect this but we can trigger resign
+            if (who === 'player') {
+                console.log('[Timer] Player timeout - server will end match');
+                // Server sẽ tự detect và broadcast game_end
+            }
+        }
+        
+        // Sync timer từ server mỗi 30 giây để tránh drift
+        async function syncTimerPeriodically() {
+            if (!isGameActive || !gameController.network || isSpectateMode) return;
+            
+            try {
+                const response = await gameController.network.getTimer(gameController.matchId);
+                if (response.success && response.payload?.timer) {
+                    const timer = response.payload.timer;
+                    syncTimerFromServer(timer.red_time_ms, timer.black_time_ms);
+                }
+            } catch (e) {
+                console.warn('[Timer] Sync failed:', e);
+            }
+        }
+        
+        // Start periodic sync
+        setInterval(syncTimerPeriodically, 30000);
 
         function updateTimerDisplay(id, seconds) {
             const el = document.getElementById(id);
@@ -784,7 +941,19 @@
                 outcome.textContent = 'Hai bên hòa nhau';
             }
             
-            reasonText.textContent = `Lý do: ${reason}`;
+            // Format reason for display
+            let reasonDisplay = reason;
+            if (reason === 'timeout') {
+                reasonDisplay = result === 'loss' ? '⏱️ Hết giờ (bạn)' : '⏱️ Đối thủ hết giờ';
+            } else if (reason === 'resign') {
+                reasonDisplay = result === 'loss' ? '🏳️ Bạn đầu hàng' : '🏳️ Đối thủ đầu hàng';
+            } else if (reason === 'checkmate') {
+                reasonDisplay = '♚ Chiếu hết';
+            } else if (reason === 'agreement') {
+                reasonDisplay = '🤝 Đồng ý hòa';
+            }
+            
+            reasonText.textContent = `Lý do: ${reasonDisplay}`;
             modal.classList.add('active');
 
             // 3. Đếm ngược tự động thoát
@@ -860,6 +1029,101 @@
         // Các nút trong Modal Kết Quả
         document.getElementById('btn-new-game').addEventListener('click', exitToLobby);
         document.getElementById('btn-to-lobby').addEventListener('click', exitToLobby);
+
+        // Rematch button in result modal
+        let pendingRematchMatchId = null;
+        
+        document.getElementById('btn-rematch').addEventListener('click', async () => {
+            const matchId = gameController.matchId;
+            if (!matchId) {
+                alert('Không thể yêu cầu đấu lại');
+                return;
+            }
+            
+            try {
+                // Show waiting modal
+                document.getElementById('result-modal').classList.remove('active');
+                document.getElementById('rematch-waiting-modal').classList.add('active');
+                
+                await gameController.network.requestRematch(matchId);
+                pendingRematchMatchId = matchId;
+            } catch (e) {
+                document.getElementById('rematch-waiting-modal').classList.remove('active');
+                alert('Lỗi: ' + e.message);
+            }
+        });
+
+        // Cancel rematch request
+        document.getElementById('btn-cancel-rematch').addEventListener('click', () => {
+            document.getElementById('rematch-waiting-modal').classList.remove('active');
+            document.getElementById('result-modal').classList.add('active');
+            pendingRematchMatchId = null;
+        });
+
+        // Accept rematch
+        document.getElementById('btn-accept-rematch').addEventListener('click', async () => {
+            const matchId = pendingRematchMatchId || gameController.matchId;
+            document.getElementById('rematch-modal').classList.remove('active');
+            
+            try {
+                gameController.network.respondRematch(matchId, true);
+                // match_found event will handle the rest
+            } catch (e) {
+                console.error('Accept rematch error:', e);
+            }
+        });
+
+        // Decline rematch
+        document.getElementById('btn-decline-rematch').addEventListener('click', async () => {
+            const matchId = pendingRematchMatchId || gameController.matchId;
+            document.getElementById('rematch-modal').classList.remove('active');
+            
+            try {
+                gameController.network.respondRematch(matchId, false);
+            } catch (e) {
+                console.error('Decline rematch error:', e);
+            }
+            pendingRematchMatchId = null;
+        });
+
+        // Listen for rematch request from opponent
+        gameController.network.on('rematch_request', (msg) => {
+            const data = msg.payload || msg;
+            pendingRematchMatchId = data.match_id;
+            const fromUsername = data.from_username || 'Đối thủ';
+            
+            document.getElementById('rematch-request-text').textContent = 
+                `${fromUsername} muốn đấu lại. Bạn đồng ý không?`;
+            
+            // Hide other modals, show rematch modal
+            document.getElementById('result-modal').classList.remove('active');
+            document.getElementById('rematch-waiting-modal').classList.remove('active');
+            document.getElementById('rematch-modal').classList.add('active');
+        });
+
+        // Listen for rematch declined
+        gameController.network.on('rematch_declined', (msg) => {
+            document.getElementById('rematch-waiting-modal').classList.remove('active');
+            document.getElementById('result-modal').classList.add('active');
+            alert('Đối thủ đã từ chối đấu lại');
+            pendingRematchMatchId = null;
+        });
+
+        // Listen for match_found (includes rematch)
+        gameController.network.on('match_found', (msg) => {
+            const data = msg.payload || msg;
+            
+            // Close all modals
+            document.getElementById('rematch-modal').classList.remove('active');
+            document.getElementById('rematch-waiting-modal').classList.remove('active');
+            document.getElementById('result-modal').classList.remove('active');
+            
+            // Store new match data and reload
+            localStorage.setItem('current_match', JSON.stringify(data));
+            
+            // Reload page for new game
+            window.location.reload();
+        });
 
         // Chat
         document.getElementById('btn-send-chat').addEventListener('click', sendChat);
