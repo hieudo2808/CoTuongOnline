@@ -1,7 +1,3 @@
-/*
- * db.c - Database operations (SQL Server via ODBC)
- */
-
 #include "db.h"
 
 #include <stdio.h>

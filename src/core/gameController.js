@@ -289,24 +289,46 @@ export class GameController {
     }
 
     checkGameStatus() {
-        const checkRed = this.chessboard.isCheck("red", this.chessboard.board);
-        const checkBlack = this.chessboard.isCheck(
-            "black",
-            this.chessboard.board
-        );
+        const currentTurn = this.chessboard.turn;
+        
+        // 1. Kiểm tra chiếu tướng (để hiện UI cảnh báo)
+        let isCheck = false;
+        if (typeof this.chessboard.isKingInDanger === 'function') {
+            isCheck = this.chessboard.isKingInDanger(currentTurn);
+        }
 
-        // Skip UI updates if no UI
-        if (!this.ui) return;
-
-        if (checkRed || checkBlack) {
-            const isCheckmate = this.chessboard.isCheckMate(
-                this.chessboard.turn,
-                this.chessboard.board
-            );
-
-            if (isCheckmate) {
-                this.chessboard.status = false;
+        // Cập nhật text cảnh báo trên UI (nếu có)
+        if (this.ui && this.ui.elements.turnText) {
+            if (isCheck) {
+                const label = currentTurn === 'red' ? 'Đỏ' : 'Đen';
+                const colorStyle = currentTurn === 'red' ? '#e74c3c' : '#2c3e50';
+                this.ui.elements.turnText.innerHTML = 
+                    `<span style="color:${colorStyle}">⚠️ Lượt ${label} (ĐANG BỊ CHIẾU!)</span>`;
+            } else {
+                this.ui.updateTurn(currentTurn);
             }
+        }
+
+        // 2. Kiểm tra Thắng/Thua (Logic cốt lõi)
+        let winner = null;
+        if (typeof this.chessboard.checkWinner === 'function') {
+            winner = this.chessboard.checkWinner();
+        }
+
+        // 3. Xử lý khi có người thắng
+        if (winner) {
+            this.chessboard.status = false; // Dừng bàn cờ
+            
+            // Xác định lý do: Nếu đang bị chiếu mà thua -> Chiếu bí. Không bị chiếu mà hết nước -> Stalemate
+            const reason = isCheck ? "checkmate" : "stalemate";
+
+            // THAY ĐỔI Ở ĐÂY: Không alert nữa, chỉ bắn sự kiện để UI tự xử lý
+            console.log(`[Game] Kết thúc: ${winner} thắng do ${reason}`);
+            
+            this.emit('game-over', { 
+                winner: winner, 
+                reason: reason 
+            });
         }
     }
 

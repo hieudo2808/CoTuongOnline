@@ -588,6 +588,32 @@
         const gameController = new NetworkGameController('xiangqi-board');
         window.gameController = gameController;
 
+        gameController.on('game-over', (data) => {
+            console.log("[UI] Nhận sự kiện Game Over:", data);
+
+            // 1. Xác định thắng/thua dựa trên phe của mình
+            let result = 'draw';
+            
+            // Lấy màu quân của mình (ưu tiên lấy từ matchData nếu có, không thì lấy mặc định)
+            const myColor = matchData ? matchData.your_color : (gameController.myColor || 'red');
+
+            if (data.winner) {
+                if (data.winner === myColor) {
+                    result = 'win';
+                } else {
+                    result = 'loss';
+                }
+            }
+
+            // 2. Gọi hàm hiển thị Modal (showResult đã có sẵn trong game.html)
+            // data.reason có thể là: 'checkmate' (chiếu bí), 'stalemate' (hết nước đi), 'resign', 'timeout'
+            showResult(result, data.reason);
+
+            // 3. Nếu đang chơi Online, chặn các tương tác thừa
+            isGameActive = false;
+            if (timerInterval) clearInterval(timerInterval);
+        });
+
         // --- Spectate Mode Setup ---
         if (isSpectateMode && spectateData) {
             gameController.matchId = spectateData.match_id;
@@ -948,7 +974,9 @@
             } else if (reason === 'resign') {
                 reasonDisplay = result === 'loss' ? '🏳️ Bạn đầu hàng' : '🏳️ Đối thủ đầu hàng';
             } else if (reason === 'checkmate') {
-                reasonDisplay = '♚ Chiếu hết';
+                reasonDisplay = '♚ Chiếu bí (Hết cờ)';
+            } else if (reason === 'stalemate') {  // <--- THÊM DÒNG NÀY
+                reasonDisplay = '🚫 Hết nước đi (Xử thua)';
             } else if (reason === 'agreement') {
                 reasonDisplay = '🤝 Đồng ý hòa';
             }

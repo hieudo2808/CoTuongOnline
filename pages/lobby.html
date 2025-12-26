@@ -1081,6 +1081,20 @@
             document.getElementById(modalId).classList.remove('active');
         };
 
+        // Show message function (defined early for use everywhere)
+        function showMessage(type, text) {
+            const msgDiv = document.getElementById('status-message');
+            if (msgDiv) {
+                msgDiv.className = `status-message ${type}`;
+                msgDiv.textContent = text;
+                msgDiv.style.display = 'block';
+                
+                setTimeout(() => {
+                    msgDiv.style.display = 'none';
+                }, 5000);
+            }
+        }
+
         // Room functions (global)
         window.refreshRoomList = async function() {
             if (!window.gameController?.network) {
@@ -1651,19 +1665,6 @@
                         </tr>
                     `;
                 });
-            }
-
-            function showMessage(type, text) {
-                const msgDiv = document.getElementById('status-message');
-                if (msgDiv) {
-                    msgDiv.className = `status-message ${type}`;
-                    msgDiv.textContent = text;
-                    msgDiv.style.display = 'block';
-                    
-                    setTimeout(() => {
-                        msgDiv.style.display = 'none';
-                    }, 5000);
-                }
             }
 
             // Create room form handler
