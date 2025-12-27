@@ -86,4 +86,9 @@ typedef struct {
 // Get timeouts that need broadcasting (returns count, fills array)
 int match_get_pending_timeouts(timeout_info_t* timeouts, int max_count);
 
+// Spectator functions
+bool match_add_spectator(const char* match_id, int user_id);
+bool match_remove_spectator(const char* match_id, int user_id);
+int match_get_spectator_count(const char* match_id);
+
 #endif  // MATCH_H

@@ -168,6 +168,25 @@ class NetworkGameController extends GameController {
         }
     }
 
+    // Join match as spectator
+    async joinSpectate(matchId) {
+        try {
+            const response = await this.network.joinSpectate(matchId);
+            console.log("[NetworkGame] Joined as spectator:", response);
+            
+            // Set spectator mode
+            this.isSpectator = true;
+            this.matchId = matchId;
+            this.isOnlineMode = true;
+            this.isMyTurn = false; // Spectators never move
+            
+            return response;
+        } catch (error) {
+            console.error("[NetworkGame] Join spectate failed:", error);
+            throw error;
+        }
+    }
+
     // Find match
     async findMatch(mode = "rated") {
         try {

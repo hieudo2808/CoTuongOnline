@@ -688,34 +688,111 @@
                     if (gameController.network) gameController.network.sessionToken = userData.token;
                 }
 
-                // --- Spectate Mode: Load match state ---
+                // --- Spectate Mode: Join as spectator and load match state ---
                 if (isSpectateMode && spectateData) {
-                    // Join as spectator - match state is already in spectateData
-                    const matchState = spectateData.match;
-                    
-                    if (matchState) {
-                        // Replay all moves to current board state
-                        gameController.setupBoard({ flipped: false });
+                    try {
+                        console.log('[Spectate] Starting spectate join for match:', spectateData.match_id);
+                        const joinResult = await gameController.joinSpectate(spectateData.match_id);
+                        console.log('[Spectate] Join result:', joinResult);
                         
-                        // Apply moves from match history
-                        if (matchState.moves && matchState.moves.length > 0) {
-                            for (const move of matchState.moves) {
-                                gameController.board.movePiece(
-                                    move.from.row, move.from.col,
-                                    move.to.row, move.to.col
-                                );
+                        if (joinResult && joinResult.payload && joinResult.payload.match_data) {
+                            const matchData = typeof joinResult.payload.match_data === 'string' ? 
+                                JSON.parse(joinResult.payload.match_data) : joinResult.payload.match_data;
+                            
+                            console.log('[Spectate] Match data:', matchData);
+                            console.log('[Spectate] Game controller chessboard:', gameController.chessboard);
+                            
+                            // Ensure chessboard exists
+                            if (!gameController.chessboard) {
+                                console.error('[Spectate] Chessboard not initialized');
+                                throw new Error('Chessboard not initialized');
                             }
-                            gameController.ui.render();
+                            
+                            if (!gameController.chessboard.board) {
+                                console.error('[Spectate] Board not initialized');
+                                throw new Error('Board not initialized');
+                            }
+                            
+                            // Init UI if not already done
+                            if (!gameController.ui) {
+                                console.log('[Spectate] Initializing UI');
+                                gameController.initBoardUI('xiangqi-board');
+                            }
+                            
+                            // Load board state from moves
+                            try {
+                                gameController.setupBoard({ flipped: false });
+                                console.log('[Spectate] Board setup complete');
+                                
+                                // Apply all moves to get current board state
+                                if (matchData.moves && matchData.moves.length > 0) {
+                                    console.log('[Spectate] Applying', matchData.moves.length, 'moves');
+                                    for (const move of matchData.moves) {
+                                        console.log('[Spectate] Applying move:', move);
+                                        
+                                        // Validate move coordinates
+                                        if (!move.from || !move.to || 
+                                            move.from.row < 0 || move.from.row > 9 || 
+                                            move.from.col < 0 || move.from.col > 8 ||
+                                            move.to.row < 0 || move.to.row > 9 || 
+                                            move.to.col < 0 || move.to.col > 8) {
+                                            console.warn('[Spectate] Invalid move coordinates:', move);
+                                            continue;
+                                        }
+                                        
+                                        // Find the piece at from position
+                                        const piece = gameController.chessboard.board[move.from.row][move.from.col];
+                                        if (piece) {
+                                            // Move piece manually (similar to executeMove)
+                                            gameController.chessboard.board[move.from.row][move.from.col] = null;
+                                            gameController.chessboard.board[move.to.row][move.to.col] = piece;
+                                            piece.row = move.to.row;
+                                            piece.col = move.to.col;
+                                            
+                                            // Switch turn
+                                            gameController.chessboard.turn = gameController.chessboard.turn === 'red' ? 'black' : 'red';
+                                            gameController.chessboard.turnCnt++;
+                                        } else {
+                                            console.warn('[Spectate] No piece at position:', move.from);
+                                        }
+                                    }
+                                    // Re-render board
+                                    if (gameController.ui) {
+                                        gameController.ui.renderBoard(gameController.chessboard.board);
+                                        console.log('[Spectate] Board re-rendered');
+                                    }
+                                } else {
+                                    console.log('[Spectate] No moves to apply');
+                                }
+                            } catch (boardError) {
+                                console.error('[Spectate] Error loading board state:', boardError);
+                                throw boardError;
+                            }
+                            
+                            // Sync timers from server
+                            if (matchData.red_time_ms !== undefined && matchData.black_time_ms !== undefined) {
+                                syncTimerFromServer(matchData.red_time_ms, matchData.black_time_ms);
+                            }
+                            
+                            // Update current turn
+                            if (joinResult.payload.current_turn) {
+                                gameController.isMyTurn = false; // Spectators never move
+                                updateTurnIndicator();
+                            }
+                            
+                            // Update player panels
+                            document.querySelector('#player-name')?.textContent && 
+                                (document.querySelector('#player-name').textContent = `🔴 Player #${matchData.red_user_id}`);
+                            document.querySelector('#opponent-name')?.textContent && 
+                                (document.querySelector('#opponent-name').textContent = `⚫ Player #${matchData.black_user_id}`);
                         }
                         
-                        // Update player panels for spectate
-                        document.querySelector('#player-name')?.textContent && 
-                            (document.querySelector('#player-name').textContent = `🔴 Player #${matchState.red_user_id}`);
-                        document.querySelector('#opponent-name')?.textContent && 
-                            (document.querySelector('#opponent-name').textContent = `⚫ Player #${matchState.black_user_id}`);
+                        console.log('[Spectate] Joined and loaded match:', spectateData.match_id);
+                    } catch (error) {
+                        console.error('[Spectate] Failed to join spectate:', error);
+                        alert('Không thể vào xem trận đấu: ' + error.message);
+                        window.location.href = 'lobby.html';
                     }
-                    
-                    console.log('[Spectate] Watching match:', spectateData.match_id);
                 }
                 // Join Match để đồng bộ trạng thái mới nhất từ Server
                 else if (matchData) {
@@ -844,8 +921,14 @@
             redTimeMs = redMs;
             blackTimeMs = blackMs;
             
-            // Update display based on my color
-            if (matchData && matchData.your_color === 'red') {
+            // Handle spectate mode
+            if (gameController.isSpectator) {
+                // For spectators: red player is always "player" (top), black is "opponent" (bottom)
+                playerTime = Math.ceil(redMs / 1000);
+                opponentTime = Math.ceil(blackMs / 1000);
+            }
+            // Handle normal play mode
+            else if (matchData && matchData.your_color === 'red') {
                 playerTime = Math.ceil(redMs / 1000);
                 opponentTime = Math.ceil(blackMs / 1000);
             } else {
@@ -866,7 +949,29 @@
                     return;
                 }
 
-                if (gameController.isMyTurn) {
+                // Handle timer logic based on game mode
+                if (gameController.isSpectator) {
+                    // For spectators: decrease timer based on current turn
+                    if (gameController.board && gameController.board.turn === 'red') {
+                        playerTime--;
+                        updateTimerDisplay('player-timer', playerTime);
+                        if (playerTime <= 30 && playerTime > 0) {
+                            document.getElementById('player-timer').classList.add('warning');
+                        }
+                        if (playerTime <= 0) {
+                            handleTimeout('player');
+                        }
+                    } else {
+                        opponentTime--;
+                        updateTimerDisplay('opponent-timer', opponentTime);
+                        if (opponentTime <= 30 && opponentTime > 0) {
+                            document.getElementById('opponent-timer').classList.add('warning');
+                        }
+                        if (opponentTime <= 0) {
+                            handleTimeout('opponent');
+                        }
+                    }
+                } else if (gameController.isMyTurn) {
                     playerTime--;
                     updateTimerDisplay('player-timer', playerTime);
                     
@@ -1007,41 +1112,50 @@
 
         // --- BUTTON EVENTS ---
 
-        // Nút Rời Trận (Đầu hàng trước khi thoát)
-        document.getElementById('btn-leave').addEventListener('click', async () => {
-            if (!isGameActive) { exitToLobby(); return; }
-            
-            if (confirm('Bạn chắc chắn muốn đầu hàng và rời trận?')) {
-                try {
-                    await gameController.resign(); // Gửi lệnh thua
-                } catch(e) { 
-                    console.error(e); 
-                } finally {
-                    // Đợi 500ms cho message đi rồi thoát
-                    setTimeout(exitToLobby, 500);
+        // Nút Rời Trận (Đầu hàng trước khi thoát) - chỉ cho player, không cho spectator
+        const btnLeave = document.getElementById('btn-leave');
+        if (btnLeave) {
+            btnLeave.addEventListener('click', async () => {
+                if (!isGameActive) { exitToLobby(); return; }
+                
+                if (confirm('Bạn chắc chắn muốn đầu hàng và rời trận?')) {
+                    try {
+                        await gameController.resign(); // Gửi lệnh thua
+                    } catch(e) { 
+                        console.error(e); 
+                    } finally {
+                        // Đợi 500ms cho message đi rồi thoát
+                        setTimeout(exitToLobby, 500);
+                    }
                 }
-            }
-        });
+            });
+        }
 
-        // Nút Xin Hòa
-        document.getElementById('btn-draw-offer').addEventListener('click', async () => {
-            if (!isGameActive) return;
-            try {
-                await gameController.offerDraw();
-                alert('Đã gửi lời mời hòa!');
-            } catch (error) {
-                console.error(error);
-                alert('Lỗi: ' + error.message);
-            }
-        });
+        // Nút Xin Hòa - chỉ cho player
+        const btnDrawOffer = document.getElementById('btn-draw-offer');
+        if (btnDrawOffer) {
+            btnDrawOffer.addEventListener('click', async () => {
+                if (!isGameActive) return;
+                try {
+                    await gameController.offerDraw();
+                    alert('Đã gửi lời mời hòa!');
+                } catch (error) {
+                    console.error(error);
+                    alert('Lỗi: ' + error.message);
+                }
+            });
+        }
 
-        // Nút Đầu Hàng
-        document.getElementById('btn-resign').addEventListener('click', async () => {
-            if (!isGameActive) return;
-            if (confirm('Bạn muốn đầu hàng?')) {
-                await gameController.resign();
-            }
-        });
+        // Nút Đầu Hàng - chỉ cho player
+        const btnResign = document.getElementById('btn-resign');
+        if (btnResign) {
+            btnResign.addEventListener('click', async () => {
+                if (!isGameActive) return;
+                if (confirm('Bạn muốn đầu hàng?')) {
+                    await gameController.resign();
+                }
+            });
+        }
 
         // Xử lý Modal Xin Hòa (Đồng ý/Từ chối)
         document.getElementById('btn-accept-draw').addEventListener('click', async () => {

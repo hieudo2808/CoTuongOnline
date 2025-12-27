@@ -156,6 +156,8 @@ char* match_get_json(const char* match_id) {
     ptr += sprintf(ptr, "{\"match_id\":\"%s\",", match->match_id);
     ptr += sprintf(ptr, "\"red_user_id\":%d,", match->red_user_id);
     ptr += sprintf(ptr, "\"black_user_id\":%d,", match->black_user_id);
+    ptr += sprintf(ptr, "\"red_time_ms\":%d,", match->red_time_ms);
+    ptr += sprintf(ptr, "\"black_time_ms\":%d,", match->black_time_ms);
     ptr += sprintf(ptr, "\"result\":\"%s\",", match->result);
     ptr += sprintf(ptr, "\"moves\":[");
 

@@ -928,6 +928,88 @@ void handle_join_match(server_t* server, client_t* client, message_t* msg) {
            user_id, match_id, match->move_count, is_my_turn);
 }
 
+// Handler: Join Spectate
+void handle_join_spectate(server_t* server, client_t* client, message_t* msg) {
+    // Validate token (optional for spectate, but good practice)
+    int user_id = 0;
+    if (msg->token && strlen(msg->token) > 0) {
+        validate_token_and_get_user(msg->token, &user_id);
+    }
+
+    // Associate this connection with user (if authenticated)
+    if (user_id > 0) {
+        client->user_id = user_id;
+        client->authenticated = true;
+    }
+
+    const char* match_id = json_get_string(msg->payload_json, "match_id");
+    if (!match_id) {
+        send_response(server, client, msg->seq, false, "Missing match_id", NULL);
+        return;
+    }
+
+    // Get match
+    match_t* match = match_find_by_id(match_id);
+    if (!match || !match->active) {
+        send_response(server, client, msg->seq, false, "Match not found or ended", NULL);
+        return;
+    }
+
+    // Determine whose turn it is
+    bool is_red_turn = (match->move_count % 2 == 0);
+    const char* current_turn = is_red_turn ? "red" : "black";
+
+    // Get match state including all moves
+    char* match_json = match_get_json(match_id);
+    if (!match_json) {
+        send_response(server, client, msg->seq, false, "Failed to get match state", NULL);
+        return;
+    }
+
+    // Add spectator to match
+    if (!match_add_spectator(match_id, user_id)) {
+        send_response(server, client, msg->seq, false, "Failed to add spectator", NULL);
+        free(match_json);
+        return;
+    }
+
+    // Return match state for spectator
+    char payload[4096];
+    snprintf(payload, sizeof(payload),
+             "{\"match_id\":\"%s\",\"move_count\":%d,\"current_turn\":\"%s\",\"is_spectator\":true,\"match_data\":%s}",
+             match_id, match->move_count, current_turn, match_json);
+
+    send_response(server, client, msg->seq, true, "Joined as spectator", payload);
+
+    printf("[Handler] User %d spectating match %s (move_count=%d)\n",
+           user_id, match_id, match->move_count);
+
+    free(match_json);
+}
+
+// Handler: Leave Spectate
+void handle_leave_spectate(server_t* server, client_t* client, message_t* msg) {
+    // Validate token
+    int user_id;
+    if (!validate_token_and_get_user(msg->token, &user_id)) {
+        send_response(server, client, msg->seq, false, "Invalid token", NULL);
+        return;
+    }
+
+    const char* match_id = json_get_string(msg->payload_json, "match_id");
+    if (!match_id) {
+        send_response(server, client, msg->seq, false, "Missing match_id", NULL);
+        return;
+    }
+
+    // Remove spectator
+    if (match_remove_spectator(match_id, user_id)) {
+        send_response(server, client, msg->seq, true, "Left spectate mode", NULL);
+    } else {
+        send_response(server, client, msg->seq, false, "Not spectating this match", NULL);
+    }
+}
+
 // Handler: Heartbeat
 void handle_heartbeat(server_t* server, client_t* client, message_t* msg) {
     send_response(server, client, msg->seq, true, "pong", NULL);
@@ -1548,103 +1630,6 @@ void handle_get_live_matches(server_t* server, client_t* client, message_t* msg)
     free(payload);
 
     printf("[Handler] Get live matches for user %d\n", user_id);
-}
-
-// Join a match as spectator
-void handle_join_spectate(server_t* server, client_t* client, message_t* msg) {
-    // Validate token
-    int user_id;
-    if (!validate_token_and_get_user(msg->token, &user_id)) {
-        send_response(server, client, msg->seq, false, "Invalid or expired token", NULL);
-        return;
-    }
-    client->user_id = user_id;
-    client->authenticated = true;
-
-    // Get match_id
-    char* match_id = json_get_string(msg->payload_json, "match_id");
-    if (!match_id || strlen(match_id) == 0) {
-        send_response(server, client, msg->seq, false, "Match ID required", NULL);
-        return;
-    }
-
-    // Get match
-    match_t* match = match_get(match_id);
-    if (!match) {
-        send_response(server, client, msg->seq, false, "Match not found", NULL);
-        return;
-    }
-
-    if (!match->active) {
-        send_response(server, client, msg->seq, false, "Match has ended", NULL);
-        return;
-    }
-
-    // Check if user is a player in this match
-    if (match->red_user_id == user_id || match->black_user_id == user_id) {
-        send_response(server, client, msg->seq, false, "You are a player in this match", NULL);
-        return;
-    }
-
-    // Add as spectator
-    if (!match_add_spectator(match_id, user_id)) {
-        send_response(server, client, msg->seq, false, "Cannot join as spectator (room full)", NULL);
-        return;
-    }
-
-    // Get current match state
-    char* match_json = match_get_json(match_id);
-    if (!match_json) {
-        send_response(server, client, msg->seq, false, "Failed to get match data", NULL);
-        return;
-    }
-
-    char* payload = malloc(strlen(match_json) + 256);
-    if (!payload) {
-        free(match_json);
-        send_response(server, client, msg->seq, false, "Memory allocation failed", NULL);
-        return;
-    }
-
-    sprintf(payload, "{\"match_id\":\"%s\",\"spectator_count\":%d,\"match\":%s}",
-            match_id, match->spectator_count, match_json);
-
-    send_response(server, client, msg->seq, true, "Joined as spectator", payload);
-
-    free(match_json);
-    free(payload);
-
-    printf("[Handler] User %d joined match %s as spectator (count: %d)\n", 
-           user_id, match_id, match->spectator_count);
-}
-
-// Leave spectating a match
-void handle_leave_spectate(server_t* server, client_t* client, message_t* msg) {
-    // Validate token
-    int user_id;
-    if (!validate_token_and_get_user(msg->token, &user_id)) {
-        send_response(server, client, msg->seq, false, "Invalid or expired token", NULL);
-        return;
-    }
-    client->user_id = user_id;
-    client->authenticated = true;
-
-    // Get match_id
-    char* match_id = json_get_string(msg->payload_json, "match_id");
-    if (!match_id || strlen(match_id) == 0) {
-        send_response(server, client, msg->seq, false, "Match ID required", NULL);
-        return;
-    }
-
-    // Remove spectator
-    if (!match_remove_spectator(match_id, user_id)) {
-        send_response(server, client, msg->seq, false, "Not spectating this match", NULL);
-        return;
-    }
-
-    send_response(server, client, msg->seq, true, "Left spectating", NULL);
-
-    printf("[Handler] User %d left spectating match %s\n", user_id, match_id);
 }
 
 // =========================
